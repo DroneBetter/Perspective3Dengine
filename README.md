@@ -4,7 +4,7 @@ A 3D engine with quaternion rotation, simulating gravity and classical billiards
 ## Controls
 You can play with WASD motion and mouse panning like Minecraft, but the keys affect velocity (which doesn't decay in space mode) and if you look around in a clockwise circle you will end up rotated anticlockwise in the roll axis. You can also use R and F to move up and down, Q and E for roll and the arrow keys for yaw and pitch.
 
-##Raytracing
+## Raytracing
 Press the t key at any time to stop the program and render the current scene with raytracing (in 960\*720, it takes a while but goes row-by-row in real time). Hold the p key on startup for the real-time raytracing mode (with larger pixels but the same number of reflections). The pixels are large enough that it uses a hexagonal lattice instead of a square one, allowing an 8% reduction in rays cast for the same human-perceptible "resolution" (in terms of average distance of a random point on the screen from the closest pixel). If this goes wrong, hold the k key also for the square lattice mode. 
 
 Rays use the same functions to detect collisions with balls as balls do with each other, but without the one-frame time constraint.
