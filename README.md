@@ -4,11 +4,14 @@ A 3D engine with quaternion rotation, simulating gravity and classical billiards
 ## Controls
 You can play with WASD motion and mouse panning like Minecraft, but the keys affect velocity (which doesn't decay in space mode) and if you look around in a clockwise circle you will end up rotated anticlockwise in the roll axis. You can also use R and F to move up and down, Q and E for roll and the arrow keys for yaw and pitch.
 
-## Projections
+## Projections
 The 3D space is projected to the 2D surface of a sphere, which is projected to the 2D rectangle of your screen. The sphere-to-rectangle conversion is also a problem in map projection, this program implements some projection algorithms, you can choose which one by pressing the corresponding number key.
 1. Azimuthal equidistant (each location on the sphere's direction and distance across the sphere's surface from the front is converted to direction and distance from the screen's centre (image is conformal at centre but is stretched laterally towards edges))
 2. Lambert azimuthal equi-area (like equidistant except with distance through the sphere instead of across its surface (is compressed radially, counteracting how equidistant is stretched laterally, so all objects' apparent sizes are preserved but becomes very distorted)) (default mode)
 3. Stereographic (each point is projected onto an infinite plane tangent to the sphere by following the line through itself from the point on the sphere opposite the plane, is locally conformal but doesn't preserve area and size must be infinite for it to work) (arbitrarily large circles on the sphere's surface become circles on the plane, so non-raytracing mode calculates balls' apparent positions and sizes based on their images' closest and furthest points from the plane's origin, it works very well)
+
+If you like interesting ones that make you sick:
+
 0. Unnamed (the first one I made before deciding to implement map projections, is like azimuthal equidistant but calculates X and Y separately based on the dot product of the point's position on the sphere to its basis vector (I had thought of azimuthal equidistant, but it instead makes a strange square where things deviate towards edges (if you increase the field of view to 360º, you can see that there's another square connected continuously at these vertices)))
 
 ## Raytracing
