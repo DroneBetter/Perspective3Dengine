@@ -44,7 +44,7 @@ def initialisePygame():
         if shape==0:
             pygame.draw.rect(screen,colour,pos+size)
         elif shape<5:
-            pygame.draw.polygon(screen,colour,[[p+s/2*math.cos(((i+shape/2)/(2 if shape==4 else 4)+di/2)*math.pi) for di,(p,s) in enumerate(zip(pos,size))] for i in range(4 if shape==4 else 8)])
+            pygame.draw.polygon(screen,colour,[[p+s/2*math.cos(((i+shape/2)/(2 if shape==4 else 3 if shape==3 else  4)+di/2)*math.pi) for di,(p,s) in enumerate(zip(pos,size))] for i in range(4 if shape==4 else 6 if shape==3 else 8)])
         else:
             pygame.draw.circle(screen,colour,pos,size/2)
     global drawLine
@@ -71,6 +71,7 @@ def initialisePygame():
         clock.tick(FPS)
         if not raytracingMode:
             screen.fill(black)
+        size[:2]=screen.get_size()
     global FPS
     FPS=60
 import pygame
@@ -84,8 +85,10 @@ stateTransitions=[[]]*len(nodes)
 def averageNode():
     return [sum(i[0][0][di] for i in nodes)/len(nodes)-si for di,si in enumerate(halfSize)]
 cameraPosition=[averageNode(),[0.0]*3]
+nodes+=[[[[po+10*((-1)**p)*(i==di) for i,po in enumerate(cameraPosition[0])],cameraPosition[1]],(rad/4,)*dims,0,angleColour(math.pi*(di/3+p))+(1/2,)] for di in range(dims) for p in range(2)]
  #must be 0.0, not 0 (to be float for the lap(float.__add__))
-cameraAngle=[[1/3,-1/6,math.sqrt(3)/2,-1/3],[0]*3] #these values make it point towards the diagram (there are probably ones that aren't askew but I like it (it has soul))
+cameraAngle=[([1.0,0.0,0.0,0.0] if True else [1/3,-1/6,math.sqrt(3)/2,-1/3]),[0.0]*3] #these values make it point towards the diagram (there are probably ones that aren't askew but I like it (it has soul))
+#(1,0,0,0) points in negative y with negative x to the right and negative z to the up
 drag=0
 gravitationalConstant=(size[0]/1000)*(64/len(nodes))**2
 hookeStrength=1/size[0]
@@ -114,7 +117,7 @@ def tangentCollision(i,j,r,rayMode=False,lightSpeed=0):
         #collision=dotProduct(i[0][1],differences)*2-magnitude #=((0-i[2])*magnitudes[1]+2*i[2]*magnitudes[0])/(0+i[2])
         #return [(collision-magnitude)*di for di in differences]
         collision=2*dotProduct((map(float.__sub__,i[0][1],j[1]) if lightSpeed else map(float.__neg__,j[1])),differences) #=dotProduct(i[0][1],differences)-dotProduct(j[1],differences)
-        return (collision,[collision*di for di in differences])
+        return (collision,[ji+collision*di for ji,di in zip(j[1],differences)])
     else:
         differences=[di/r for di in map(float.__sub__,i[0][0],j[0][0])]
         magnitudes=(dotProduct(i[0][1],differences),dotProduct(j[0][1],differences))
@@ -168,7 +171,7 @@ def quaternionConjugate(q): #usually conjugation is inverting the imaginary part
 #the reciprocal is the conjugate for unit vectors, otherwise divide by the magnitude squared
 
 def rotateVector(v,q):
-    return [(2*(q[2]**2+q[3]**2)-1)*v[0]+2*((q[0]*q[3]-q[1]*q[2])*v[1]-(q[0]*q[2]+q[1]*q[3])*v[2]), 
+    return [(2*(q[2]**2+q[3]**2)-1)*v[0]+2*((q[0]*q[3]-q[1]*q[2])*v[1]-(q[0]*q[2]+q[1]*q[3])*v[2]),
             (2*(q[1]**2+q[3]**2)-1)*v[1]+2*((q[0]*q[1]-q[2]*q[3])*v[2]-(q[1]*q[2]+q[0]*q[3])*v[0]),
             (2*(q[1]**2+q[2]**2)-1)*v[2]+2*((q[0]*q[2]-q[1]*q[3])*v[0]-(q[0]*q[1]+q[2]*q[3])*v[1])]
 
@@ -232,7 +235,8 @@ def slerp(a,b,t): #frankly delicious
     theSquares=t*math.acos(abs(qzero)) #/imaginaryMagnitude and *imaginaryMagnitude cancel out
     #coeff*=t*(1 if theSquares==0 else math.sin(theSquares)/theSquares)/imaginaryMagnitude #do it later
     #coeff*=t*(1 if theSquares==0 else math.sin(theSquares)/(t*coeff))/imaginaryMagnitude
-    coeff=(0 if theSquares==0 else math.sin(theSquares))/math.sqrt(1-qzero**2)*sgn(qzero) #could instead be divided by ((a[0]*b[1]-a[1]*b[0]-a[2]*b[3]+a[3]*b[2])**2+(a[0]*b[2]+a[1]*b[3]-a[2]*b[0]-a[3]*b[1])**2+(a[0]*b[3]-a[1]*b[2]+a[2]*b[1]-a[3]*b[0])**2)
+    coeff=math.sin(theSquares)*sgn(qzero)/math.sqrt(1-qzero**2) #could instead be divided by ((a[0]*b[1]-a[1]*b[0]-a[2]*b[3]+a[3]*b[2])**2+(a[0]*b[2]+a[1]*b[3]-a[2]*b[0]-a[3]*b[1])**2+(a[0]*b[3]-a[1]*b[2]+a[2]*b[1]-a[3]*b[0])**2)
+    #sgn(qzero)=qzero/sqrt(qzero**2), qzero/sqrt(qzero**2)*sqrt(1-qzero**2)=qzero*sqrt((1-qzero**2)/qzero**2)=x*sqrt(qzero**-2-1)
     #theCos=math.cos(theSquares)
     '''return [a[0]*theCos-a[1]*coeff*(a[0]*b[1]-a[1]*b[0]-a[2]*b[3]+a[3]*b[2])-a[2]*coeff*(a[0]*b[2]+a[1]*b[3]-a[2]*b[0]-a[3]*b[1])-a[3]*coeff*(a[0]*b[3]-a[1]*b[2]+a[2]*b[1]-a[3]*b[0]),
             a[0]*coeff*(a[0]*b[1]-a[1]*b[0]-a[2]*b[3]+a[3]*b[2])+a[1]*theCos+a[2]*coeff*(a[0]*b[3]-a[1]*b[2]+a[2]*b[1]-a[3]*b[0])-a[3]*coeff*(a[0]*b[2]+a[1]*b[3]-a[2]*b[0]-a[3]*b[1]),
@@ -255,8 +259,8 @@ def slerp(a,b,t): #frankly delicious
             a[1]*theCos+coeff*b[1],
             a[2]*theCos+coeff*b[2],
             a[3]*theCos+coeff*b[3]]
-#print([math.hypot(*slerp([1,0,0,0],[1/3,-1/6,math.sqrt(3)/2,-1/3],n/100)) for n in range(100)]) #test that it yields intermediate unit vectors
 #print([slerp([1,0,0,0],[1/3,-1/6,math.sqrt(3)/2,-1/3],n/4) for n in range(5)])
+#print([math.hypot(*slerp([1,0,0,0],[1/3,-1/6,math.sqrt(3)/2,-1/3],n/100)) for n in range(100)]) #test that it yields intermediate unit vectors
 #print([slerp([1,0,0,0],[-1/3,-1/6,math.sqrt(3)/2,-1/3],n/4) for n in range(5)]) #test that it takes optimal route
 
 pixelAngle=1/minSize #math.tau/max(size)
@@ -307,13 +311,13 @@ def antiProject(x,y,q): #project spherical coordinates to vector (its own functi
             #comag*b[1]+simagomag*(x*b[0]+y*b[3]),
             #comag*b[2]-simagomag*(x*b[3]-y*b[0]),
             #comag*b[3]+simagomag*(x*b[2]-y*b[1])]
-    #rotateVector((0,0,1),q) yields
-    #return [-2*(q[0]*q[2]+q[1]*q[3]),
-             #2*(q[0]*q[1]-q[2]*q[3]),
-             #2*(q[1]**2+q[2]**2)-1]
-    return [-2*((comag*q[0]-simagomag*(x*q[1]+y*q[2]))*(comag*q[2]-simagomag*(x*q[3]-y*q[0]))+(comag*q[1]+simagomag*(x*q[0]+y*q[3]))*(comag*q[3]+simagomag*(x*q[2]-y*q[1]))),
-             2*((comag*q[0]-simagomag*(x*q[1]+y*q[2]))*(comag*q[1]+simagomag*(x*q[0]+y*q[3]))-(comag*q[2]-simagomag*(x*q[3]-y*q[0]))*(comag*q[3]+simagomag*(x*q[2]-y*q[1]))),
-             2*((comag*q[1]+simagomag*(x*q[0]+y*q[3]))**2+(comag*q[2]-simagomag*(x*q[3]-y*q[0]))**2)-1]
+    #rotateVector((0,1,0),q) yields
+    #return [ 2*((q[0]*q[3]-q[1]*q[2])),
+            #(2*(q[1]**2+q[3]**2)-1),
+            #-2*(q[0]*q[1]+q[2]*q[3])]
+    return [2*(((comag*q[0]-simagomag*(x*q[1]+y*q[2]))*(comag*q[3]+simagomag*(x*q[2]-y*q[1]))-(comag*q[1]+simagomag*(x*q[0]+y*q[3]))*(comag*q[2]-simagomag*(x*q[3]-y*q[0])))),
+            2*((comag*q[1]+simagomag*(x*q[0]+y*q[3]))**2+(comag*q[3]+simagomag*(x*q[2]-y*q[1]))**2)-1,
+           -2*((comag*q[0]-simagomag*(x*q[1]+y*q[2]))*(comag*q[1]+simagomag*(x*q[0]+y*q[3]))+(comag*q[2]-simagomag*(x*q[3]-y*q[0]))*(comag*q[3]+simagomag*(x*q[2]-y*q[1])))]
 
 def rayAngle(x,y): #converts screen position to ray velocity vector
     if projectionMode==0:
@@ -323,7 +327,8 @@ def rayAngle(x,y): #converts screen position to ray velocity vector
         y-=halfSize[1]
         magnitude=pixelAngle*math.hypot(x,y)
         #print(magnitude/math.sqrt(2))
-        bagnitude=(1 if projectionMode==1 else math.asin(magnitude/math.sqrt(2))/magnitude if projectionMode==2 else 2*math.atan(1/magnitude)/magnitude) #if projectionMode==3 else)
+        bagnitude=(magnitude if projectionMode==1 else 32/3*math.acos(1-magnitude**2/2) if projectionMode==2 else 2*math.atan(1/magnitude)/magnitude) #if projectionMode==3 else)
+        #Wikipedia says use 2*math.asin(magnitude/math.sqrt(2)) but it doesn't seem to work (I will instead use the one from the Scratch one)
         #direction=math.atan2(y,x)
         #(i,j)=(cos(direction)*bagnitude,sin(direction)*bagnitude) #bagnitude now divided by magnitude (instead of both i and j)
         return antiProject(x*bagnitude,y*bagnitude,cameraAngle[0]) #rotateVector((0,0,1),rotateByScreen(cameraAngle[0],(x*bagnitude,y*bagnitude,0)))
@@ -338,67 +343,71 @@ def raytrace(hexLattice,exposure,upscale,fieldOfView,maxReflections=8,antialiasi
         screenJ=screenerinoJ*jInc*upscale #range doesn't work with float inputs
         for screenerinoI in range(int((fieldOfView[0]/pixelAngle+jInc*hexLattice*screenK%2)/upscale)):
             screenI=screenerinoI*upscale
-            antialiasColour=[0,0,0]
-            for antialiasPasses in range(antialiasing if antialiasing else 1):
-                timeElapsed=0
-                (i,j,t)=[random.random()-0.5 for _ in range(2+timeAntialiasing)]+[0]*(not timeAntialiasing) if antialiasing else (0,)*3
-                rayPosition=[cameraPosition[0],rayAngle(screenI+i,screenJ+j)]
-                if lightSpeed!=0:
-                    rayPosition[1]=[n*lightSpeed for n in rayPosition[1]]
-                reflectivenesses=[]
-                reflectionColours=[]
-                reflections=0
-                bestCandidateIndice=-1
-                while (reflections==0 or bestCandidateIndice!=-1 or gravityMode) and reflections<maxReflections:
-                    if gravityMode:
-                        gravityAcceleration=[0]*3
-                    bestCandidateTime=(gravityMode-timeElapsed%gravityMode if gravityMode else 0)
+            if False: #for testing
+                rayPosition=rayAngle(screenJ/fieldOfView[0],screenI/fieldOfView[1])
+                antialiasColour=angleColour(math.pi*((rayPosition[0]<0) if abs(rayPosition[1])<abs(rayPosition[0])>abs(rayPosition[2]) else 1/3+(rayPosition[1]<0) if abs(rayPosition[1])>abs(rayPosition[2]) else 2/3+(rayPosition[2]<0)))
+            else:
+                antialiasColour=[0,0,0]
+                for antialiasPasses in range(antialiasing if antialiasing else 1):
+                    timeElapsed=0
+                    (i,j,t)=[random.random()-0.5 for _ in range(2+timeAntialiasing)]+[0]*(not timeAntialiasing) if antialiasing else (0,)*3
+                    rayPosition=[cameraPosition[0],rayAngle((screenJ+j)/fieldOfView[0],(screenI+i)/fieldOfView[1])]
+                    if lightSpeed!=0:
+                        rayPosition[1]=[n*lightSpeed for n in rayPosition[1]]
+                    reflectivenesses=[]
+                    reflectionColours=[]
+                    reflections=0
                     bestCandidateIndice=-1
-                    for m,n in enumerate(nodes):
-                        spherePosition=[([s-timeElapsed*v for s,v in n[0]] if lightSpeed else n[0][0]),(n[0][1] if lightSpeed else [0]*3)] #subtract p (velocity) because rays are travelling back in time
-                        differences=[s-r for s,r in zip(spherePosition[0],rayPosition[0])] #lap(float.__sub__,spherePosition[0],rayPosition[0]) causes TypeError: unsupported operand type(s) for *: 'NotImplementedType' and 'float'
-                        bee=sum(di*(niv+njv) for (di,niv,njv) in zip(differences,spherePosition[1],rayPosition[1])) #always add sphere velocity to ray for relative instead of subtracting
-                        a=sum((ni+nj)**2 for ni,nj in zip(spherePosition[1],rayPosition[1]))
-                        radius=n[1][0]
-                        discriminant=bee**2-a*(sum(di**2 for di in differences)-radius**2)
-                        #print("disc",discriminant)
-                        if discriminant>0:
-                            discriminant=math.sqrt(discriminant)
-                            times=[(-bee+p*discriminant)/a for p in range(-1,3,2)]
-                            candidate=times[times[0]<0]
-                            if 0<candidate and not 0!=bestCandidateTime>=candidate: #0<candidate and (bestCandidateTime==0 or candidate<bestCandidateTime):
-                                bestCandidateTime=candidate
-                                bestCandidateNode=n
-                                bestCandidateIndice=m
+                    while (reflections==0 or bestCandidateIndice!=-1 or gravityMode) and reflections<maxReflections:
                         if gravityMode:
-                            gravity=gravityMode*gravitationalConstant/max(2,sum(di**2 for di in differences)**1.5)*n[2]
-                            gravityAcceleration=[gi+gravity*di for gi,di in zip(gravityAcceleration,differences)]
-                    if gravityMode:
-                        rayPosition[1]=[v+bestCandidateTime*ga for v,ga in zip(rayPosition[1],gravityAcceleration)]
-                    rayPosition[0]=[s+bestCandidateTime*v for s,v in zip(*rayPosition)]
-                    if lightSpeed:
-                        timeElapsed+=bestCandidateTime
-                    if bestCandidateIndice!=-1:
-                        #print("wibble")
-                        (mag,newVelocity)=tangentCollision(bestCandidateNode,rayPosition,bestCandidateNode[1][1],True)
-                        if normalise:
-                            #speed=math.hypot(*newVelocity)
-                            newVelocity=[v*lightSpeed/mag for v in newVelocity]
-                            #collisionMagnitude=math.hypot(*(n-o for n,o in zip(newVelocity,rayPosition[1])))
+                            gravityAcceleration=[0]*3
+                        bestCandidateTime=(gravityMode-timeElapsed%gravityMode if gravityMode else 0)
+                        bestCandidateIndice=-1
+                        for m,n in enumerate(nodes):
+                            spherePosition=[([s-timeElapsed*v for s,v in n[0]] if lightSpeed else n[0][0]),(n[0][1] if lightSpeed else [0]*3)] #subtract p (velocity) because rays are travelling back in time
+                            differences=[s-r for s,r in zip(spherePosition[0],rayPosition[0])] #lap(float.__sub__,spherePosition[0],rayPosition[0]) causes TypeError: unsupported operand type(s) for *: 'NotImplementedType' and 'float'
+                            bee=sum(di*(niv+njv) for (di,niv,njv) in zip(differences,spherePosition[1],rayPosition[1])) #always add sphere velocity to ray for relative instead of subtracting
+                            a=sum((ni+nj)**2 for ni,nj in zip(spherePosition[1],rayPosition[1]))
+                            radius=n[1][0]
+                            discriminant=bee**2-a*(sum(di**2 for di in differences)-radius**2)
+                            #print("disc",discriminant)
+                            if discriminant>0:
+                                discriminant=math.sqrt(discriminant)
+                                times=[(-bee+p*discriminant)/a for p in range(-1,3,2)]
+                                candidate=times[times[0]<0]
+                                if 0<candidate and not 0!=bestCandidateTime>=candidate: #0<candidate and (bestCandidateTime==0 or candidate<bestCandidateTime):
+                                    bestCandidateTime=candidate
+                                    bestCandidateNode=n
+                                    bestCandidateIndice=m
+                            if gravityMode:
+                                gravity=gravityMode*gravitationalConstant/max(2,sum(di**2 for di in differences)**1.5)*n[2]
+                                gravityAcceleration=[gi+gravity*di for gi,di in zip(gravityAcceleration,differences)]
+                        if gravityMode:
+                            rayPosition[1]=[v+bestCandidateTime*ga for v,ga in zip(rayPosition[1],gravityAcceleration)]
+                        rayPosition[0]=[s+bestCandidateTime*v for s,v in zip(*rayPosition)]
+                        if lightSpeed:
+                            timeElapsed+=bestCandidateTime
+                        if bestCandidateIndice!=-1:
+                            #print("wibble")
+                            (mag,newVelocity)=tangentCollision(bestCandidateNode,rayPosition,bestCandidateNode[1][1],True) #mag being collision magnitude
+                            if normalise:
+                                #speed=math.hypot(*newVelocity)
+                                newVelocity=[v*lightSpeed/mag for v in newVelocity]
+                            #mag=math.hypot(*(n-o for n,o in zip(newVelocity,rayPosition[1])))
                             rayPosition[1]=newVelocity
                             reflectivenesses.append(1-(1-bestCandidateNode[3][3]*mag/(lightSpeed if lightSpeed else 1)) if True else bestCandidateNode[3][3])
                             reflectionColours.append(bestCandidateNode[3][:3])
-                    reflections+=1
-                rayColour=[0,0,0]
-                for r,c in zip(reflectivenesses[::-1],reflectionColours[::-1]):
-                    rayColour=weightedAverageColours((1-r,rayColour),(r,c))
-            antialiasColour=(weightedAverageColours((antialiasPasses/(antialiasPasses+1),antialiasColour),(1/(antialiasPasses+1),rayColour)) if antialiasing else rayColour)
-            antialiasColour=[min(round(i),255) for i in antialiasColour]
-            '''if antialiasColour!=[0]*3:
-                print("radius",pixelRadius,"position",(screenI/(upscale)/(fieldOfView[1]/pixelAngle/jInc/upscale)*size[0],hexLattice/theThing-screenJ/(jInc*upscale)/((fieldOfView[0]/pixelAngle+jInc*hexLattice*screenK%2)/upscale)*size[1]),"colour",antialiasColour)
-                print("(",screenI,"*",size[0],"/",fieldOfView[0],",",hexLattice,"/",theThing,"-",screenJ,"*",size[1],"/",fieldOfView[1],")")'''
-            drawShape(pixelRadius,((screenI+1/2)/upscale/(fieldOfView[0]/pixelAngle/jInc/upscale)*size[0],hexLattice/theThing+(screenJ+1/2)/(jInc*upscale)/((fieldOfView[1]/pixelAngle+jInc*hexLattice*screenK%2)/upscale)*size[1]),antialiasColour,5)
-
+                        reflections+=1
+                    rayColour=[0,0,0]
+                    for r,c in zip(reflectivenesses[::-1],reflectionColours[::-1]):
+                        rayColour=weightedAverageColours((1-r,rayColour),(r,c))
+                antialiasColour=(weightedAverageColours((antialiasPasses/(antialiasPasses+1),antialiasColour),(1/(antialiasPasses+1),rayColour)) if antialiasing else rayColour)
+                antialiasColour=[min(round(i*exposure),255) for i in antialiasColour]
+                '''if antialiasColour!=[0]*3:
+                    print("radius",pixelRadius,"position",(screenI/(upscale)/(fieldOfView[1]/pixelAngle/jInc/upscale)*size[0],hexLattice/theThing-screenJ/(jInc*upscale)/((fieldOfView[0]/pixelAngle+jInc*hexLattice*screenK%2)/upscale)*size[1]),"colour",antialiasColour)
+                    print("(",screenI,"*",size[0],"/",fieldOfView[0],",",hexLattice,"/",theThing,"-",screenJ,"*",size[1],"/",fieldOfView[1],")")'''
+            #drawShape((pixelRadius if hexLattice else (pixelRadius,)*2),((screenI/upscale-2/2)/(fieldOfView[0]/pixelAngle/jInc/upscale)*size[0],hexLattice/theThing+(screenJ+1/2)/(jInc*upscale)/((fieldOfView[1]/pixelAngle+jInc*hexLattice*screenK%2)/upscale)*size[1]),antialiasColour,3*hexLattice)
+            drawShape((pixelRadius if hexLattice else (pixelRadius,)*2),(screenI*size[0]/(fieldOfView[0]/pixelAngle),(screenJ-hexLattice/theThing)*size[1]/((fieldOfView[1]/pixelAngle))),antialiasColour,3*hexLattice)
 
 def findNodeScreenPositions():
     output=[n[0][0] for n in nodes]
@@ -416,13 +425,16 @@ raytracingMode=False
 toggleKeys=[pygame.K_z,pygame.K_t]
 oldToggles=[False]*len(toggleKeys)
 run=True
-def normalise(vector):
-    magnitude=math.sqrt(sum(map(abs,vector)))
-    return (vector if magnitude==0 or magnitude==1 else [i/magnitude for i in vector])
+def normalise(vector,allowSmaller=False):
+    magnitude=math.hypot(*vector) #math.sqrt(sum(map(abs,vector)))
+    return (vector if magnitude==0 or (magnitude<=1 if allowSmaller else magnitude==1) else [i/magnitude for i in vector])
 def average(*vectors):
     l=len(vectors)
     return [sum(i)/l for i in zip(*vectors)]
+    
 frames=0
+mouseChangeSinceClick=[0,0]
+spaceChangeSinceClick=[0,0]
 while run:
     keys=pygame.key.get_pressed()
     doEvents()
@@ -441,12 +453,29 @@ while run:
     if dims==3:
         if mouse.get_pressed()[0]:
             mouseChange=mouse.get_rel()
-            mouseChange=mouseChange+(0,) if raytracingMode else (-mouseChange[1],mouseChange[0],0)
+            mouseChange=(mouseChange[0],-mouseChange[1],0) #mouseChange+=(0,)
+            mouseChangeSinceClick=lap(float.__add__,mouseChangeSinceClick,lap(float,mouseChange))
+            wibble=lap(float.__sub__,mouseChangeSinceClick,spaceChangeSinceClick)
         else:
             mouse.get_rel() #otherwise it jumps
             mouseChange=(0,)*3
-        cameraAngle[1]=([0.0]*3 if keys[pygame.K_LSHIFT] and drag==0 else [(di+acc*gain*angularVelocityConversionFactor)/(1+drag) for di,acc in zip(cameraAngle[1],normalise([keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]]))])
-        cameraAngle[0]=rotateByScreen(cameraAngle[0],[ci+mi for ci,mi in zip(cameraAngle[1],mouseChange)]) #slerp([1,0,0,0],[1/3,-1/6,math.sqrt(3)/2,-1/3],frames/100) #(for testing)
+            mouseChangeSinceClick=[0.0,0.0,0.0]
+            spaceChangeSinceClick=[0.0,0.0,0.0]
+        keyAcceleration=[keys[pygame.K_DOWN]-keys[pygame.K_UP]+mouseChange[1]/minSize,keys[pygame.K_LEFT]-keys[pygame.K_RIGHT]+mouseChange[0]/minSize,keys[pygame.K_q]-keys[pygame.K_e]]
+        angularAcceleration=lap(float.__add__,map(float,keyAcceleration),[mouseChange[1]/minSize,mouseChange[0]/minSize,0])
+        #v**2=u**2+2*a*s (stay in school kids)
+        #0**2<=(dotProduct(wibble,cameraAngle[1])/abs(wibble))**2+2*gain*angularVelocityConversionFactor*abs(wibble)
+        #-(dotProduct(arg(wibble),cameraAngle[1]))**2<=2*gain*angularVelocityConversionFactor*abs(wibble)
+        #-(dotProduct(wibble,cameraAngle[1])/math.hypot(*wibble))**2<=2*gain*angularVelocityConversionFactor*math.hypot(*wibble)
+        #-dotProduct(wibble,cameraAngle[1])**2<=2*gain*angularVelocityConversionFactor*math.hypot(*wibble)**3
+        cameraAngle[1]=([0.0]*3 if keys[pygame.K_LSHIFT] and drag==0 else [(di+acc*gain*angularVelocityConversionFactor)/(1+drag) for di,acc in zip(cameraAngle[1],normalise(((wibble if mouse.get_pressed()[0] and dotProduct(wibble,cameraAngle[1])**2>2*gain*angularVelocityConversionFactor*math.hypot(*wibble)**3 else lap(float.__neg__,cameraAngle[1])) if keyAcceleration==[0.0,0.0,0.0] else angularAcceleration),keyAcceleration==[0.0,0.0,0.0]))])
+        if mouse.get_pressed()[0]:
+            spaceChangeSinceClick=lap(float.__add__,spaceChangeSinceClick,cameraAngle[1])
+            #print(mouseChangeSinceClick,spaceChangeSinceClick)
+        cameraAngle[0]=rotateByScreen(*cameraAngle) #slerp([1,0,0,0],[1/3,-1/6,math.sqrt(3)/2,-1/3],frames/100) #(for testing)
+        #formerly:
+        #cameraAngle[1]=([0.0]*3 if keys[pygame.K_LSHIFT] and drag==0 else [(di+acc*gain*angularVelocityConversionFactor)/(1+drag) for di,acc in zip(cameraAngle[1],normalise([keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]]))])
+        #cameraAngle[0]=rotateByScreen(cameraAngle[0],[ci+mi for ci,mi in zip(cameraAngle[1],mouseChange)])
     nodeScreenPositions=findNodeScreenPositions()
     renderOrder=conditionalReverse(perspectiveMode,[j for _, j in sorted((p[2],i) for i,p in enumerate(nodeScreenPositions))]) #perhaps replace with zip(*sorted((p[2],i) for i,p in enumerate(nodeScreenPositions)))[1] (not sure)
     if physicsMode:
@@ -458,10 +487,10 @@ while run:
     if clickDone:
         mousePos=mouse.get_pos()
     if raytracingMode:
-        raytrace(False,1/4,100,(size[0]/size[1],1),maxReflections=8,antialiasing=0,timeAntialiasing=0,lightSpeed=0,gravityMode=0)
+        raytrace(False,1/2,50,(size[0]/size[1],1),maxReflections=8,antialiasing=0,timeAntialiasing=0,lightSpeed=0,gravityMode=0)
     else:
         for i,j,n in [(i,nodeScreenPositions[i],nodes[i]) for i in renderOrder]:
-            sezi=2*((j[2] if projectionMode==3 else n[1][0]/pixelAngle/j[2]) if perspectiveMode else n[1][0]) #different from size
+            sezi=2*((j[2] if projectionMode==3 or j[2]==0 else n[1][0]/pixelAngle/j[2]) if perspectiveMode else n[1][0]) #different from size
             drawShape(sezi,j[:2],n[3],5)
     frames+=1
 else: exit()
