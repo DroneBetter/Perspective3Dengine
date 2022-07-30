@@ -25,7 +25,8 @@ colours.insert(2,averageColours(*colours[:2]))
 for i in range(2):
     colours.insert(i+3,averageColours(colours[i],colours[2]))
 #light, dark, white, black, red, yellow, green
-dims=3
+gameMode=True
+dims=2+(not gameMode) #it will be a 2D game
 playerNode=True
 playerNodeOffset=((0.0,-10.0,-20.0) if dims==3 else (0.0,0.0))
 size=[2560,1050]+[1050]*(dims-2)
@@ -39,19 +40,43 @@ def drawShape(size,pos,colour,shape):
         pygame.draw.polygon(screen,colour,[[p+s/2*math.cos(((i+shape/2)/(2 if shape==4 else 3 if shape==3 else  4)+di/2)*math.pi) for di,(p,s) in enumerate(zip(pos,size))] for i in range(4 if shape==4 else 6 if shape==3 else 8)])
     else:
         pygame.draw.circle(screen,colour,pos,size/2)
-def drawLine(initial,destination,colour):
-    pygame.draw.line(screen,colour,initial,destination)
+def drawLine(initial,destination,colour,width=1):
+    if width!=1:
+        #trigonometry
+        #angle=math.atan2(*map(float.__sub__,destination,initial))%(math.pi/2)
+        #angle=min(angle,math.pi/2-angle)
+        #width=int(width/math.cos(angle))
+        #optimised by 1/cos(atan(x/y)=sqrt((x/y)**2+1)
+        #displacement=[(d-i)**2 for d,i in zip(destination,initial)]
+        #displacement.sort()
+        #if displacement[1]!=0.0:
+            #width=int(width*(displacement[0]/displacement[1]+1)**0.5)
+        #more optimised
+        (x,y)=[(d-i)**2 for d,i in zip(destination,initial)]
+        if x!=0 or y!=0:
+            pygame.draw.line(screen,colour,initial,destination,int(width*((x/y if x<y else y/x)+1)**0.5)) #thank you WolframAlpha
+    else:
+        pygame.draw.line(screen,colour,initial,destination)
 
 mouse=pygame.mouse
 def doEvents():
-    global clickDone
     global run
+    global clickDone
     clickDone=False
+    global framesMouseDown
+    global shortClickDone
+    shortClickDone=False
+    if mouse.get_pressed()[0]:
+        framesMouseDown+=1
+    else:
+        framesMouseDown=0
     for event in pygame.event.get():
         if event.type==pygame.QUIT:
             run=False
         if event.type==pygame.MOUSEBUTTONUP:
-            clickDone=1
+            clickDone=True
+            if framesMouseDown<0.2*FPS:
+                shortClickDone=True
         if event.type==pygame.WINDOWRESIZED:
             size[:2]=screen.get_rect().size
             minSize=min(size[:2])
@@ -62,49 +87,69 @@ def doEvents():
         screen.fill(black)
     size[:2]=screen.get_size()
 FPS=60
-
 nodeNumber=64
 rad=halfSize[0]/nodeNumber
-nodes=[[[[i*rad]+halfSize[1:],[0]+[random.random()/2**8 for di in range(dims-1)]],(rad/4,)*dims,1,angleColour(random.random()*2*math.pi)+(random.random(),)] for i in range(nodeNumber)]
-stateTransitions=[[]]*len(nodes)
-#each formatted [position,size,mass,colours]
+orthographicZoom=nodeNumber/8
+spatialGain=1/(2*orthographicZoom) #would be *math.sqrt(2)**gameMode because in gameMode, the motion will be diagonal and normalised, but that makes shaking on the small circles too great
+nodes=([[[[0.0]*dims]*2,(rad/4,)*dims,1,(255,)*3,0]] if playerNode else [])
+#each formatted [position,size,mass,colour,fixedness] #fixed balls are fixed in-place but still create gravity
+if gameMode:
+    nodes.append([[[0.0,100.0]+[0.0]*(dims==3),[0.0]*dims],[50.0]*dims,(50.0/rad)**dims,(127,)*3,1])
+    nodes+=[[[[p+100*math.cos((a*2/6-di/2)*math.pi) for di,p in enumerate(nodes[1][0][0])],[0.0]*dims],[10.0]*dims,(10.0/rad)**dims,(127,)*3,1] for a in range(6)]
+else:
+    nodes+=[[[[i*rad*4]+halfSize[1:],[0]+[random.random()/2**8 for di in range(dims-1)]],(rad,)*dims,1,angleColour(random.random()*2*math.pi)+(random.random(),),0] for i in range(nodeNumber)]
+    nodes+=[[[[po+rad*4*((-1)**p)*(i==di) for i,po in enumerate(cameraPosition[0])],cameraPosition[1]],(rad,)*dims,0,angleColour(math.pi*(di/3+p))+(1/2,),1] for di in range(dims) for p in range(2)]
 def averageNode():
     return [sum(i[0][0][di] for i in nodes)/len(nodes)-si for di,si in enumerate(halfSize)]
 cameraPosition=[averageNode(),[0.0]*3]
-nodes+=[[[[po+rad*((-1)**p)*(i==di) for i,po in enumerate(cameraPosition[0])],cameraPosition[1]],(rad/4,)*dims,0,angleColour(math.pi*(di/3+p))+(1/2,)] for di in range(dims) for p in range(2)]
-if playerNode:
-    nodes.insert(0,[[[0.0]*dims]*2,(rad/4,)*dims,1,(255,)*3])
+stateTransitions=[[]]*len(nodes)
 cameraAngle=[((1.0,0.0,0.0,0.0) if True else [1/3,-1/6,math.sqrt(3)/2,-1/3]),[0.0]*3] #these values make it point towards the diagram (there are probably ones that aren't askew but I like it (it has soul))
 #(1,0,0,0) points in negative y with negative x to the right and negative z to the up
-drag=0
-gravitationalConstant=(size[0]/1000)*(64/len(nodes))**2
+drag=1/2**6
+gravitationalConstant=(size[0]/5000)*(64/len(nodes))**2
 hookeStrength=0 #1/size[0]
+def normalise(vector,allowSmaller=False):
+    magnitude=math.hypot(*vector) #math.sqrt(sum(map(abs,vector)))
+    return (vector if magnitude==0 or (magnitude<=1 if allowSmaller else magnitude==1) else [i/magnitude for i in vector])
 def physics():
     for i in nodes:
         if drag>0:
             absVel=max(1,math.hypot(*i[0][1])) #each dimension's deceleration from drag is its magnitude as a component of the unit vector of velocity times absolute velocity squared, is actual component times absolute velocity.
             i[0][1]=[di*(1-absVel*drag) for di in i[0][1]] #air resistance
-    for i,(it,k) in enumerate(zip(stateTransitions[:-1],nodes[:-1])): #TypeError: 'zip' object is not subscriptable (I hate it so much)
-        for j,(jt,l) in enumerate(zip(stateTransitions[i+1:],nodes[i+1:]),start=i+1):
-            differences=lap(float.__sub__,l[0][0],k[0][0])
-            #distSquare=sum(di**2 for di in differences)
-            gravity=gravitationalConstant/max(2,sum(di**2 for di in differences)**1.5) #inverse-square law is 1/distance**2, for x axis is cos(angle of distance from axis)/(absolute distance)**2, the cos is x/(absolute), so is x/(abs)**3, however the sum outputs distance**2 so is exponentiated by 1.5 instead of 3
-            gravity=(gravity*l[2],gravity*k[2])
-            for ni,(ki,li,di) in enumerate(zip(k[0][1],l[0][1],differences)): #we are the knights who say ni
-                nodes[i][0][1][ni]+=di*(hookeStrength*(j in it)+gravity[0] if hookeStrength else gravity[0])
-                nodes[j][0][1][ni]-=di*(hookeStrength*(i in jt)+gravity[1] if hookeStrength else gravity[1])
+    if gameMode:
+        playerInitial=list(nodes[0][0][1])
+    for j,(jt,l) in enumerate(zip(stateTransitions[1:],nodes[1:]),start=1):  #TypeError: 'zip' object is not subscriptable (I hate it so much)
+        for i,(it,k) in enumerate(zip(stateTransitions[:j],nodes[:j])):
+            if not (i==0 and l[4]==2 or l[4]==3):
+                differences=lap(float.__sub__,l[0][0],k[0][0])
+                distSquare=sum(di**2 for di in differences)
+                radSquare=(l[1][0]+k[1][0])**2 #"the square is rad, man"
+                gravity=gravitationalConstant*( min(1/2,1/distSquare**1.5) #inverse-square law is 1/distance**2, for x axis is cos(angle of distance from axis)/(absolute distance)**2, the cos is x/(absolute), so is x/(abs)**3, however the sum outputs distance**2 so is exponentiated by 1.5 instead of 3
+                                               if distSquare>radSquare else
+                                                math.sqrt(distSquare/radSquare)/radSquare**1.5) #not quite correct because the shell theorem only works when the 
+                gravity=(gravity*l[2],gravity*k[2])
+                for ni,(ki,li,di) in enumerate(zip(k[0][1],l[0][1],differences)): #we are the knights who say ni
+                    if nodes[i][4]!=1:
+                        nodes[i][0][1][ni]+=di*(hookeStrength*(j in it)+gravity[0] if hookeStrength else gravity[0])
+                    if nodes[j][4]!=1:
+                        nodes[j][0][1][ni]-=di*(hookeStrength*(i in jt)+gravity[1] if hookeStrength else gravity[1])
+    if gameMode:
+        playerAcceleration=normalise(lap(float.__sub__,nodes[0][0][1],playerInitial))
+        if playerAcceleration!=[0.0]*dims:
+            global cameraAngle
+            cameraAngle[0]=[playerAcceleration[1],playerAcceleration[0]]
 
 def axialCollision(m0,v0,m1,v1):
     return (((m0-m1)*v0+2*m1*v1)/(m0+m1),
             ((m1-m0)*v1+2*m0*v0)/(m1+m0))
-def tangentCollision(i,j,r,rayMode=False,lightSpeed=0):
+def tangentCollision(i,j,r,rayMode=False,lightSpeed=0,returnRayCollisionMagnitude=True,makeRayTangent=False):
     if rayMode:
         differences=[di/r for di in map(float.__sub__,i[0][0],j[0])]
         #magnitude=dotProduct(j[1],differences)
         #collision=dotProduct(i[0][1],differences)*2-magnitude #=((0-i[2])*magnitudes[1]+2*i[2]*magnitudes[0])/(0+i[2])
         #return [(collision-magnitude)*di for di in differences]
-        collision=2*dotProduct((map(float.__sub__,i[0][1],j[1]) if lightSpeed else map(float.__neg__,j[1])),differences) #=dotProduct(i[0][1],differences)-dotProduct(j[1],differences)
-        return (collision,[ji+collision*di for ji,di in zip(j[1],differences)])
+        collision=(1.0625 if makeRayTangent else 2)*dotProduct((map(float.__sub__,i[0][1],j[1]) if lightSpeed else map(float.__neg__,j[1])),differences) #=dotProduct(i[0][1],differences)-dotProduct(j[1],differences)
+        return (collision,[ji+collision*di for ji,di in zip(j[1],differences)]) if returnRayCollisionMagnitude else [ji+collision*di for ji,di in zip(j[1],differences)]
     else:
         differences=[di/r for di in map(float.__sub__,i[0][0],j[0][0])]
         magnitudes=(dotProduct(i[0][1],differences),dotProduct(j[0][1],differences))
@@ -115,27 +160,30 @@ def tangentCollision(i,j,r,rayMode=False,lightSpeed=0):
                 [vi+jChange*di for vi,di in zip(j[0][1],differences)])
 
 def subframes():
+    global playerLanded
+    playerLanded=False
     timeElapsed=0
     pairsAlreadyCollided=[]
     while timeElapsed<1:
         bestCandidateTime=1-timeElapsed
         bestCandidateIndices=(-1)*2
-        for i,(it,k) in enumerate(zip(stateTransitions[:-1],nodes[:-1])): #TypeError: 'zip' object is not subscriptable (I hate it so much)
-            for j,(jt,l) in enumerate(zip(stateTransitions[i+1:],nodes[i+1:]),start=i+1):
-                if (i,j) not in pairsAlreadyCollided:
+        for j,(jt,l) in enumerate(zip(stateTransitions[1:],nodes[1:]),start=1):
+            for i,(it,k) in enumerate(zip(stateTransitions[:j],nodes[:j])):
+                if (i,j) not in pairsAlreadyCollided or l[4]==3:
                     #(x+xv*t)**2+(y+yv*t)**2+(z+zv*t)**2=r**2
                     #x**2+2*x*xv*t+(xv*t)**2+y**2+2*y*yv*t+(yv*t)**2+z**2+2*z*zv*t+(zv*t)**2=r**2
                     #(xv**2+yv**2+zv**2)*t**2+2*(x*xv+y*yv+z*zv)*t+x**2+y**2+z**2-r**2=0
                     #t=(-2*(x*xv+y*yv+z*zv)±math.sqrt(4*(x*xv+y*yv+z*zv)**2-4*(xv**2+yv**2+zv**2)*(x**2+y**2+z**2-r**2)))/2*(xv**2+yv**2+zv**2)
                     #discriminant 4*(x*xv+y*yv+z*zv)**2-4*(xv**2+yv**2+zv**2)*(x**2+y**2+z**2-r**2)>=0
+                    #t=(-(x*xv+y*yv+z*zv)±math.sqrt((x*xv+y*yv+z*zv)**2-(xv**2+yv**2+zv**2)*(x**2+y**2+z**2-r**2)))/(xv**2+yv**2+zv**2)
                     bee=sum((ni-nj)*(niv-njv) for (ni,niv,nj,njv) in zip(*k[0],*l[0])) #bzz (bee is half of b)
                     a=sum((ni-nj)**2 for ni,nj in zip(k[0][1],l[0][1]))
                     radius=k[1][0]+l[1][0]
                     discriminant=bee**2-a*(sum((ni-nj)**2 for ni,nj in zip(k[0][0],l[0][0]))-radius**2) #4*a*c part could instead be float.__mul__(*(sum((ni-nj)**2 for ni,nj in zip(k[0][m],nodes[j][0][m])) for m in range(2))) if a weren't to be reused
                     if discriminant>0:
                         discriminant=math.sqrt(discriminant)
-                        times=[(-bee+p*discriminant)/a for p in range(-1,3,2)] #all coefficients cancel out if you think about it
-                        candidate=times[times[0]<0]
+                        #times=[(-bee+p*discriminant)/a for p in range(-1,3,2)] #all coefficients cancel out if you think about it
+                        candidate=(-bee-discriminant)/a #times[times[0]<0] #no longer account for exiting spheres
                         if 0<candidate<bestCandidateTime:
                             bestCandidateTime=candidate
                             bestCandidateRadius=radius
@@ -144,12 +192,49 @@ def subframes():
         for i in nodes:
             i[0][0]=[s+v*bestCandidateTime for (s,v) in zip(*i[0])] #formerly lap(float.__add__,*i[0]) (back in my day before we had to bother with all of this sub-frame nonsense)
         timeElapsed+=bestCandidateTime
-
+        global armExtended
         if timeElapsed<1:
             #print(timeElapsed)
-            for i,v in zip(bestCandidateIndices,tangentCollision(*bestCandidateNodes,bestCandidateRadius)):
-                nodes[i][0][1]=v
-            pairsAlreadyCollided=[(i,j) for i,j in pairsAlreadyCollided if i not in bestCandidateIndices and j not in bestCandidateIndices]+[bestCandidateIndices]
+            #if bestCandidateIndices[0]==0 and bestCandidateNodes[1][4]==2:
+                #nodes[bestCandidateIndices[1]][4]+=1 #arm formerly 'collided' with player when it stopped intersecting
+            itsOver=False
+            if bestCandidateIndices[0]==0 and bestCandidateNodes[1][4]==2:
+                del nodes[bestCandidateIndices[1]]
+                del stateTransitions[bestCandidateIndices[1]]
+                itsOver=True #only darkness now
+                armExtended=False
+            else:
+                if bestCandidateNodes[1][4]==2:
+                    nodes[bestCandidateIndices[1]][0][1]=bestCandidateNodes[1][0][1]
+                    nodes[bestCandidateIndices[1]][4]=3
+                    nodes[bestCandidateIndices[1]].append(bestCandidateIndices[0]) #index of node it is connected to
+                    nodes[bestCandidateIndices[1]].append(math.dist(bestCandidateNodes[1][0][0],nodes[0][0][0])) #length of arm from player
+                elif bestCandidateNodes[1][4]==3:
+                    if bestCandidateIndices[0]==0:
+                        del nodes[bestCandidateIndices[1]]
+                        del stateTransitions[bestCandidateIndices[1]]
+                        itsOver=True #only darkness now
+                        armExtended=False
+                    #else:
+                        #moved to be unconditional instead
+                elif bestCandidateNodes[1][4]==1: #sorry for inelegance here
+                    nodes[bestCandidateIndices[0]][0][1]=tangentCollision(bestCandidateNodes[1],bestCandidateNodes[0][0],bestCandidateRadius,True,1,False,(gameMode and bestCandidateIndices[0]==0))
+                    if gameMode and bestCandidateIndices[0]==0:
+                        playerLanded=True
+                elif bestCandidateNodes[0][4]==1:
+                    nodes[bestCandidateIndices[1]][0][1]=tangentCollision(bestCandidateNodes[0],bestCandidateNodes[1][0],bestCandidateRadius,True,1,False)
+                else:
+                    for i,v in zip(bestCandidateIndices,tangentCollision(*bestCandidateNodes,bestCandidateRadius)):
+                        nodes[i][0][1]=v
+            pairsAlreadyCollided=[(i,j) for i,j in pairsAlreadyCollided if i not in bestCandidateIndices and j not in bestCandidateIndices or 2<=nodes[j][4]<4]+[bestCandidateIndices]*(not itsOver) #we're all going to make it
+            if armExtended and nodes[-1][4]==3:
+                nodes[-1][0][1]=nodes[nodes[-1][5]][0][1]
+                if math.dist(nodes[-1][0][0],nodes[0][0][0])>=nodes[-1][6]:
+                    normalDisplacement=[(p-a)/nodes[-1][6] for p,a in zip(nodes[0][0][0],nodes[-1][0][0])]
+                    dot=dotProduct(map(float.__sub__,nodes[0][0][1],nodes[-1][0][1]),normalDisplacement)
+                    if dot>0:
+                        print(nodes[0][0][1],normalDisplacement)
+                        nodes[0][0][1]=[v-n*dot for v,n in zip(nodes[0][0][1],normalDisplacement)]
 
 def quaternionMultiply(a,b):
     return ((a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],
@@ -189,7 +274,7 @@ def rotateByMatrix(v,m):
             if dims==2 else
             #tuple(sum(m[di*dims+i]*vi for i,vi in enumerate(v)) for di in range(dims))
              tuple(sum(map(mul,m[di*dims:(di+1)*dims],v)) for di in range(dims)))
-def matrixMultiply(a,b): 
+def matrixMultiply(a,b):
     return ( (a[0]*b[0]+a[1]*b[3]+a[2]*b[6],a[0]*b[1]+a[1]*b[4]+a[2]*b[7],a[0]*b[2]+a[1]*b[5]+a[2]*b[8],
               a[3]*b[0]+a[4]*b[3]+a[5]*b[6],a[3]*b[1]+a[4]*b[4]+a[5]*b[7],a[3]*b[2]+a[4]*b[5]+a[5]*b[8],
               a[6]*b[0]+a[7]*b[3]+a[8]*b[6],a[6]*b[1]+a[7]*b[4]+a[8]*b[7],a[6]*b[2]+a[7]*b[5]+a[8]*b[8])
@@ -464,33 +549,41 @@ def raytrace(hexLattice,exposure,upscale,fieldOfView,maxReflections=8,antialiasi
 def findNodeScreenPositions():
     return ( [projectRelativeToScreen(rotateByMatrix(lap(float.__sub__,n[0][0],cameraPosition[0]),cameraMatrix)) for n in nodes]
             if dims==3 and perspectiveMode else
-             [lap(float.__add__,rotateByMatrix([n-c-h for n,c,h in zip(n[0][0],cameraPosition[0],halfSize)],cameraMatrix),halfSize) for n in nodes]) #list comprehension because would have to be lap(float.__sub__,lap(float.__sub__,n[0][0],cameraPosition[0]),halfSize)) because __sub__ doesn't take arbitrarily many parameters
+             [lap(float.__add__,rotateByMatrix([(n-c-h)*orthographicZoom for n,c,h in zip(n[0][0],cameraPosition[0],halfSize)],cameraMatrix),halfSize) for n in nodes]) #list comprehension because would have to be lap(float.__sub__,lap(float.__sub__,n[0][0],cameraPosition[0]),halfSize)) because __sub__ doesn't take arbitrarily many parameters
 
-gain=1
-angularVelocityConversionFactor=math.tau/FPS
+angularGain=math.tau/FPS
 perspectiveMode=True
 physicsMode=True
 raytracingMode=False
-toggleKeys=[pygame.K_z,pygame.K_t]
+toggleKeys=[pygame.K_z,pygame.K_t,pygame.K_MINUS,pygame.K_EQUALS]
 oldToggles=[False]*len(toggleKeys)
 run=True
-def normalise(vector,allowSmaller=False):
-    magnitude=math.hypot(*vector) #math.sqrt(sum(map(abs,vector)))
-    return (vector if magnitude==0 or (magnitude<=1 if allowSmaller else magnitude==1) else [i/magnitude for i in vector])
 def average(*vectors):
     l=len(vectors)
     return [sum(i)/l for i in zip(*vectors)]
 
 frames=0
+framesMouseDown=0
 mouseChangeSinceClick=[0,0]
-spaceChangeSinceClick=[0,0]
+spaceChangeSinceClick=[0.0,0.0]
+playerLanded=False
+armExtended=False
 while run:
     keys=pygame.key.get_pressed()
     doEvents()
+    if clickDone:
+        mousePos=[m-h for m,h in zip(mouse.get_pos(),halfSize)] #not lap(int.__sub__,mouse.get_pos(),halfSize) because halfSize is floats (my macOS maximum non-fullscreen window height is odd, you see)
     if perspectiveMode:
-        cameraPosition[1]=([0.0]*3 if keys[pygame.K_LSHIFT] else lap(float.__add__,(nodes[0][0][1] if playerNode and physicsMode else cameraPosition[1]),rotateVector(normalise(([keys[pygame.K_d]-keys[pygame.K_a],keys[pygame.K_f]-keys[pygame.K_r],keys[pygame.K_w]-keys[pygame.K_s]] if dims==3 else [keys[pygame.K_d]-keys[pygame.K_a],keys[pygame.K_s]-keys[pygame.K_w]])),quaternionConjugate(cameraAngle[0]))))
-        cameraPosition[0]=((lap(float.__add__,nodes[0][0][0],rotateVector(playerNodeOffset,quaternionConjugate(cameraAngle[0]))) if dims==3 else lap(float.__sub__,nodes[0][0][0],halfSize)) if playerNode and physicsMode else lap(float.__add__,*cameraPosition))
-        if playerNode and physicsMode:
+        cameraPosition=[((lap(float.__add__,nodes[0][0][0],rotateVector(playerNodeOffset,quaternionConjugate(cameraAngle[0]))) if dims==3 else lap(float.__sub__,nodes[0][0][0],halfSize)) if playerNode and physicsMode else lap(float.__add__,*cameraPosition)),([0.0]*3 if keys[pygame.K_LSHIFT] else nodes[0][0][1] if gameMode and not playerLanded else lap(float.__add__,(nodes[0][0][1] if playerNode and physicsMode else cameraPosition[1]),rotateVector([k*spatialGain for k in normalise([keys[pygame.K_d]-keys[pygame.K_a],keys[pygame.K_f]-keys[pygame.K_r],keys[pygame.K_w]-keys[pygame.K_s]] if dims==3 else ([keys[pygame.K_d]-keys[pygame.K_a],playerLanded] if gameMode else [keys[pygame.K_d]-keys[pygame.K_a],keys[pygame.K_s]-keys[pygame.K_w]]))],quaternionConjugate(cameraAngle[0]))))]
+        if gameMode:
+            if shortClickDone:
+                if playerLanded:
+                    cameraPosition[1]=lap(float.__add__,nodes[0][0][1],rotateVector((0.0,spatialGain*-32.0),quaternionConjugate(cameraAngle[0])))
+                else:
+                    if not armExtended:
+                        nodes.append([[nodes[0][0][0],lap(float.__add__,nodes[0][0][1],normalise(rotateVector(mousePos,quaternionConjugate(cameraAngle[0]))))],(rad/8,)*dims,(1/8)**dims,(255,)*3,2])
+                        stateTransitions.append([])
+                        armExtended=True
             nodes[0][0][1]=cameraPosition[1]
     else:
         cameraPosition[0]=averageNode()
@@ -502,51 +595,55 @@ while run:
             elif i==1:
                 if dims==3:
                     raytracingMode^=True
+            elif i==2:
+                orthographicZoom/=math.sqrt(2)
+            elif i==3:
+                orthographicZoom*=math.sqrt(2)
     oldToggles=toggles
-    if mouse.get_pressed()[0]:
-        mouseChange=mouse.get_rel()
-        if dims==3:
-            mouseChange=(-mouseChange[1],mouseChange[0],0) #mouseChange+=(0,)
-            mouseChangeSinceClick=lap(float.__add__,mouseChangeSinceClick,lap(float,mouseChange))
-            wibble=lap(float.__sub__,mouseChangeSinceClick,spaceChangeSinceClick)
+    if not gameMode:
+        if mouse.get_pressed()[0]:
+            mouseChange=mouse.get_rel()
+            if dims==3:
+                mouseChange=(-mouseChange[1],mouseChange[0],0) #mouseChange+=(0,)
+                mouseChangeSinceClick=lap(float.__add__,mouseChangeSinceClick,lap(float,mouseChange))
+                wibble=lap(float.__sub__,mouseChangeSinceClick,spaceChangeSinceClick)
+            else:
+                if not (playerNode and physicsMode):
+                    cameraPosition[0]=lap(float.__add__,cameraPosition[0],(v/orthographicZoom for v in rotateVector(lap(int.__neg__,mouseChange),quaternionConjugate(cameraAngle[0])))) #the dims==3 here will never happen but is for dragging in the screen axes
         else:
-            if not (playerNode and physicsMode):
-                cameraPosition[0]=lap(float.__add__,cameraPosition[0],rotateVector(lap(int.__neg__,mouseChange),quaternionConjugate(cameraAngle[0]))) #the dims==3 here will never happen but is for dragging in the screen axes
-    else:
-        mouse.get_rel() #otherwise it jumps
-        mouseChange=(0,)*3
-        mouseChangeSinceClick=[0.0,0.0,0.0]
-        spaceChangeSinceClick=[0.0,0.0,0.0]
-    keyAcceleration=[keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]] if dims==3 else [keys[pygame.K_q]-keys[pygame.K_e]]
+            mouse.get_rel() #otherwise it jumps
+            mouseChange=(0,)*3
+            mouseChangeSinceClick=[0.0,0.0,0.0]
+            spaceChangeSinceClick=[0.0,0.0,0.0]
+    keyAcceleration=([keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]] if dims==3 else [keys[pygame.K_q]-keys[pygame.K_e]])
     angularAcceleration=lap(float.__add__,map(float,keyAcceleration),[mouseChange[1]/minSize,mouseChange[0]/minSize,0]) if dims==3 else keyAcceleration
     #v**2=u**2+2*a*s (stay in school kids)
-    #0**2<=(dotProduct(wibble,cameraAngle[1])/abs(wibble))**2+2*gain*angularVelocityConversionFactor*abs(wibble)
-    #-(dotProduct(arg(wibble),cameraAngle[1]))**2<=2*gain*angularVelocityConversionFactor*abs(wibble)
-    #-(dotProduct(wibble,cameraAngle[1])/math.hypot(*wibble))**2<=2*gain*angularVelocityConversionFactor*math.hypot(*wibble)
-    #-dotProduct(wibble,cameraAngle[1])**2<=2*gain*angularVelocityConversionFactor*math.hypot(*wibble)**3
-    cameraAngle=([rotateByScreen(cameraAngle[0],mouseChange),[0.0]*3] if keys[pygame.K_LSHIFT] and drag==0 else [rotateByScreen(*cameraAngle),[(di+acc*gain*angularVelocityConversionFactor)/(1+drag) for di,acc in zip(cameraAngle[1],normalise(((wibble if (dims==3 and mouse.get_pressed()[0]) and dotProduct(wibble,cameraAngle[1])**2<2*gain*angularVelocityConversionFactor*math.hypot(*wibble)**3 else lap(float.__neg__,cameraAngle[1])) if keyAcceleration==[0,0,0] else angularAcceleration),keyAcceleration==[0.0,0.0,0.0]))]])
+    #0**2<=(dotProduct(wibble,cameraAngle[1])/abs(wibble))**2+2*angularGain*abs(wibble)
+    #-(dotProduct(arg(wibble),cameraAngle[1]))**2<=2*angularGain*abs(wibble)
+    #-(dotProduct(wibble,cameraAngle[1])/math.hypot(*wibble))**2<=2*angularGain*math.hypot(*wibble)
+    #-dotProduct(wibble,cameraAngle[1])**2<=2*angularGain*math.hypot(*wibble)**3
+    if not gameMode:
+        cameraAngle=[rotateByScreen(cameraAngle[0],mouseChange),[0.0]*3] if keys[pygame.K_LSHIFT] and drag==0 else [rotateByScreen(*cameraAngle),[(di+acc*angularGain)/(1+drag) for di,acc in zip(cameraAngle[1],normalise(((wibble if (dims==3 and mouse.get_pressed()[0]) and dotProduct(wibble,cameraAngle[1])**2<2*angularGain*math.hypot(*wibble)**3 else lap(float.__neg__,cameraAngle[1])) if keyAcceleration==[0,0,0] else angularAcceleration),keyAcceleration==[0.0,0.0,0.0]))]]
     if mouse.get_pressed()[0]:
         spaceChangeSinceClick=lap(float.__add__,spaceChangeSinceClick,cameraAngle[1])
         #print(mouseChangeSinceClick,spaceChangeSinceClick)
-    #formerly:
-    #cameraAngle[1]=([0.0]*3 if keys[pygame.K_LSHIFT] and drag==0 else [(di+acc*gain*angularVelocityConversionFactor)/(1+drag) for di,acc in zip(cameraAngle[1],normalise([keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]]))])
-    #cameraAngle[0]=rotateByScreen(cameraAngle[0],[ci+mi for ci,mi in zip(cameraAngle[1],mouseChange)])
     cameraMatrix=rotationMatrix(cameraAngle[0])
     nodeScreenPositions=findNodeScreenPositions()
-    renderOrder=range(len(nodes)) if dims==2 else conditionalReverse(perspectiveMode,[j for _, j in sorted((p[2],i) for i,p in enumerate(nodeScreenPositions))]) #perhaps replace with zip(*sorted((p[2],i) for i,p in enumerate(nodeScreenPositions)))[1] (not sure)
     if physicsMode:
         physics()
         subframes()
-    for sc,k,n in zip(nodeScreenPositions,stateTransitions,nodes):
+    renderOrder=range(len(nodes)) if dims==2 else conditionalReverse(perspectiveMode,[j for _, j in sorted((p[2],i) for i,p in enumerate(nodeScreenPositions))]) #perhaps replace with zip(*sorted((p[2],i) for i,p in enumerate(nodeScreenPositions)))[1] (not sure)
+    '''for sc,k,n in zip(nodeScreenPositions,stateTransitions,nodes):
         for l in k:
-            drawLine(sc[:2],(average(sc[:2],nodeScreenPositions[l][:2]) if directedMode else nodeScreenPositions[l][:2]),n[3][colourMode])
-    if clickDone:
-        mousePos=mouse.get_pos()
+            drawLine(sc[:2],(average(sc[:2],nodeScreenPositions[l][:2]) if directedMode else nodeScreenPositions[l][:2]),n[3][colourMode])''' #from tablebase vision
+    for j,n in zip(nodeScreenPositions,nodes):
+        if 2<=n[4]<4:
+            drawLine(nodeScreenPositions[0],j,(255,)*3,int(orthographicZoom*n[1][0]))
     if raytracingMode:
         raytrace(False,1/2,25,(size[0]/size[1],1),maxReflections=8,antialiasing=0,timeAntialiasing=0,lightSpeed=0,gravityMode=0)
     else:
         for i,j,n in [(i,nodeScreenPositions[i],nodes[i]) for i in renderOrder]:
-            sezi=2*((j[2] if projectionMode==3 or j[2]==0 else n[1][0]/pixelAngle/j[2]) if dims==3 and perspectiveMode else n[1][0]) #different from size
-            drawShape(sezi,j[:2],n[3],5)
+            sezi=2*((j[2] if projectionMode==3 or j[2]==0 else n[1][0]/pixelAngle/j[2]) if dims==3 and perspectiveMode else orthographicZoom*n[1][0]) #different from size
+            drawShape(sezi,j[:2],(((0,255,0) if playerLanded else (255,0,0)) if i==0 else n[3]),5)
     frames+=1
 else: exit()
