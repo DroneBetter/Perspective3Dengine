@@ -10,6 +10,8 @@ def crossProduct(a,b):
     return (a[1]*b[2]-a[2]*b[1],
             a[2]*b[0]-a[0]*b[2],
             a[0]*b[1]-a[1]*b[0]) if dims==3 else a[0]*b[1]-a[1]*b[0] #very suspicious indeed
+def drossProduct(a,b):
+    return sum(a)*sum(b)-dotProduct(a,b)
 def sgn(n):
     return 1 if n>0 else -1 if n<0 else 0
 
@@ -178,13 +180,14 @@ def subframes():
     playerLanded=False
     timeElapsed=0
     pairsAlreadyCollided=[]
+    nodeFramesProceeded=[0.0]*len(nodes)
     while timeElapsed<1:
         bestCandidateTime=1-timeElapsed
-        bestCandidateIndices=(-1)*2
-        for j,(jt,l) in enumerate(zip(stateTransitions[1:],nodes[1:]),start=1):
-            for i,(it,k) in enumerate(zip(stateTransitions[:j],nodes[:j])):
+        bestCandidateIndices=(-1,)*2
+        for j,(jt,l,u) in enumerate(zip(stateTransitions[1:],nodes[1:],nodeFramesProceeded[1:]),start=1):
+            for i,(it,k,t) in enumerate(zip(stateTransitions[:j],nodes[:j],nodeFramesProceeded[:j])):
                 if (i,j) not in pairsAlreadyCollided or l[4]==3:
-                    #(x+xv*t)**2+(y+yv*t)**2+(z+zv*t)**2=r**2
+                    '''#(x+xv*t)**2+(y+yv*t)**2+(z+zv*t)**2=r**2
                     #x**2+2*x*xv*t+(xv*t)**2+y**2+2*y*yv*t+(yv*t)**2+z**2+2*z*zv*t+(zv*t)**2=r**2
                     #(xv**2+yv**2+zv**2)*t**2+2*(x*xv+y*yv+z*zv)*t+x**2+y**2+z**2-r**2=0
                     #t=(-2*(x*xv+y*yv+z*zv)±math.sqrt(4*(x*xv+y*yv+z*zv)**2-4*(xv**2+yv**2+zv**2)*(x**2+y**2+z**2-r**2)))/2*(xv**2+yv**2+zv**2)
@@ -193,16 +196,45 @@ def subframes():
                     bee=sum((ni-nj)*(niv-njv) for (ni,niv,nj,njv) in zip(*k[0],*l[0])) #bzz (bee is half of b)
                     a=sum((ni-nj)**2 for ni,nj in zip(k[0][1],l[0][1]))
                     radius=k[1][0]+l[1][0]
-                    discriminant=bee**2-a*(sum((ni-nj)**2 for ni,nj in zip(k[0][0],l[0][0]))-radius**2) #4*a*c part could instead be float.__mul__(*(sum((ni-nj)**2 for ni,nj in zip(k[0][m],nodes[j][0][m])) for m in range(2))) if a weren't to be reused
+                    discriminant=bee**2-a*(sum((ni-nj)**2 for ni,nj in zip(k[0][0],l[0][0]))-radius**2) #4*a*c part could instead be float.__mul__(*(sum((ni-nj)**2 for ni,nj in zip(k[0][m],nodes[j][0][m])) for m in range(2))) if a weren't to be reused''' #instead, store asynchronously
+                    #((x1-x0)+(xv1*(t-t1)-xv0*(t-t0)))**2+((y1-y0)+(yv1*(t-t1)-yv0*(t-t0)))**2+((z1-z0)+(zv1*(t-t1)-zv0*(t-t0)))**2=r**2
+                    #(x1-x0)**2+2*(x1-x0)*(xv1*(t-t1)-xv0*(t-t0))+(xv1*(t-t1)-xv0*(t-t0))**2+(y1-y0)**2+2*(y1-y0)*(yv1*(t-t1)-yv0*(t-t0))+(yv1*(t-t1)-yv0*(t-t0))**2+(z1-z0)**2+2*(z1-z0)*(zv1*(t-t1)-zv0*(t-t0))+(zv1*(t-t1)-zv0*(t-t0))**2=r**2
+                    #(x1-x0)**2+(y1-y0)**2+(z1-z0)**2+2*((x1-x0)*(xv1*(t-t1)-xv0*(t-t0))+(y1-y0)*(yv1*(t-t1)-yv0*(t-t0))+(z1-z0)*(zv1*(t-t1)-zv0*(t-t0)))+(xv1*(t-t1)-xv0*(t-t0))**2+(yv1*(t-t1)-yv0*(t-t0))**2+(zv1*(t-t1)-zv0*(t-t0))**2=r**2
+                    #(x1-x0)**2+(y1-y0)**2+(z1-z0)**2+2*((x1-x0)*xv1*(t-t1)-(x1-x0)*xv0*(t-t0)+(y1-y0)*yv1*(t-t1)-(y1-y0)*yv0*(t-t0)+(z1-z0)*zv1*(t-t1)-(z1-z0)*zv0*(t-t0))+(xv1*(t-t1)-xv0*(t-t0))**2+(yv1*(t-t1)-yv0*(t-t0))**2+(zv1*(t-t1)-zv0*(t-t0))**2=r**2
+                    #(x1-x0)**2+(y1-y0)**2+(z1-z0)**2+2*(((x1-x0)*xv1*(t-t1)+(y1-y0)*yv1*(t-t1)+(z1-z0)*zv1*(t-t1))-((x1-x0)*xv0*(t-t0)+(y1-y0)*yv0*(t-t0)+(z1-z0)*zv0*(t-t0)))+(xv1*(t-t1)-xv0*(t-t0))**2+(yv1*(t-t1)-yv0*(t-t0))**2+(zv1*(t-t1)-zv0*(t-t0))**2=r**2
+                    #(x1-x0)**2+(y1-y0)**2+(z1-z0)**2+2*(((x1-x0)*xv1+(y1-y0)*yv1+(z1-z0)*zv1)*(t-t1)-((x1-x0)*xv0+(y1-y0)*yv0+(z1-z0)*zv0)*(t-t0))+(xv1*(t-t1)-xv0*(t-t0))**2+(yv1*(t-t1)-yv0*(t-t0))**2+(zv1*(t-t1)-zv0*(t-t0))**2=r**2
+                    #(x1-x0)**2+(y1-y0)**2+(z1-z0)**2+2*(((x1-x0)*xv1+(y1-y0)*yv1+(z1-z0)*zv1)*(t-t1)-((x1-x0)*xv0+(y1-y0)*yv0+(z1-z0)*zv0)*(t-t0))+xv1**2*(t-t1)**2-2*xv1*(t-t1)*xv0*(t-t0)+xv0**2*(t-t0)**2+yv1**2*(t-t1)**2-2*yv1*(t-t1)*yv0*(t-t0)+yv0**2*(t-t0)**2+zv1**2*(t-t1)**2-2*zv1*(t-t1)*zv0*(t-t0)+zv0**2*(t-t0)**2=r**2
+                    #(x1-x0)**2+(y1-y0)**2+(z1-z0)**2+2*(((x1-x0)*xv1+(y1-y0)*yv1+(z1-z0)*zv1)*(t-t1)-((x1-x0)*xv0+(y1-y0)*yv0+(z1-z0)*zv0)*(t-t0))+(xv1**2+yv1**2+zv1**2)*(t-t1)**2-2*(xv1+yv1+zv1)*(t-t1)*(xv0+yv0+zv0)*(t-t0)+(xv0**2+yv0**2+zv0**2)*(t-t0)**2-r**2=0
+                    #(x1-x0)**2+(y1-y0)**2+(z1-z0)**2+(xv1**2+yv1**2+zv1**2)*(t-t1)**2+2*((x1-x0)*xv1+(y1-y0)*yv1+(z1-z0)*zv1)*(t-t1)-2*(xv1+yv1+zv1)*(t-t1)*(xv0+yv0+zv0)*(t-t0)+(xv0**2+yv0**2+zv0**2)*(t-t0)**2-2*((x1-x0)*xv0+(y1-y0)*yv0+(z1-z0)*zv0)*(t-t0)-r**2=0
+                    #Mathematica says
+                    #t=-((x0*xv0-x1*xv0-x0*xv1+x1*xv1+y0*yv0-y1*yv0-y0*yv1+y1*yv1+z0*zv0-z1*zv0-z0*zv1+z1*zv1-xv0**2*t0+xv0*xv1*t0+xv1*yv0*t0-yv0**2*t0+xv0*yv1*t0+yv0*yv1*t0+xv1*zv0*t0+yv1*zv0*t0-zv0**2*t0+xv0*zv1*t0+yv0*zv1*t0+zv0*zv1*t0+xv0*xv1*t1-xv1**2*t1+xv1*yv0*t1+xv0*yv1*t1+yv0*yv1*t1-yv1**2*t1+xv1*zv0*t1+yv1*zv0*t1+xv0*zv1*t1+yv0*zv1*t1+zv0*zv1*t1-zv1**2*t1±math.sqrt(4*(x0*(xv0-xv1)+x1*(xv1-xv0)+y0*yv0-y1*yv0-y0*yv1+y1*yv1+z0*zv0-z1*zv0-z0*zv1+z1*zv1-xv0**2*t0+xv0*xv1*t0+xv1*yv0*t0-yv0**2*t0+xv0*yv1*t0+yv0*yv1*t0+xv1*zv0*t0+yv1*zv0*t0-zv0**2*t0+xv0*zv1*t0+yv0*zv1*t0+zv0*zv1*t0+xv0*xv1*t1-xv1**2*t1+xv1*yv0*t1+xv0*yv1*t1+yv0*yv1*t1-yv1**2*t1+xv1*zv0*t1+yv1*zv0*t1+xv0*zv1*t1+yv0*zv1*t1+zv0*zv1*t1-zv1**2*t1)**2-4*(xv0**2+xv1**2+yv0**2-2*yv0*yv1+yv1**2-2*yv1*zv0+zv0**2-2*xv1*(yv0+zv0)-2*yv0*zv1-2*zv0*zv1+zv1**2-2*xv0*(xv1+yv1+zv1))*(x0**2+x1**2+y0**2-2*y0*y1+y1**2+z0**2-2*z0*z1+z1**2-r**2+2*x1*xv0*t0-2*y0*yv0*t0+2*y1*yv0*t0-2*z0*zv0*t0+2*z1*zv0*t0+xv0**2*t0**2+yv0**2*t0**2+zv0**2*t0**2-2*x1*xv1*t1+2*y0*yv1*t1-2*y1*yv1*t1+2*z0*zv1*t1-2*z1*zv1*t1-2*xv0*xv1*t0*t1-2*xv1*yv0*t0*t1-2*xv0*yv1*t0*t1-2*yv0*yv1*t0*t1-2*xv1*zv0*t0*t1-2*yv1*zv0*t0*t1-2*xv0*zv1*t0*t1-2*yv0*zv1*t0*t1-2*zv0*zv1*t0*t1+xv1**2*t1**2+yv1**2*t1**2+zv1**2*t1**2-2*x0*(x1+xv0*t0-xv1*t1)))/2)/(xv0**2+xv1**2+yv0**2-2*yv0*yv1+yv1**2-2*yv1*zv0+zv0**2-2*xv1*(yv0+zv0)-2*yv0*zv1-2*zv0*zv1+zv1**2-2*xv0*(xv1+yv1+zv1))) #thank you Stephen Wolfram
+                    #simplifies to
+                    #t=-(((x0-x1)*(xv0-xv1)+(y0-y1)*(yv0-yv1)+(z0-z1)*(zv0-zv1)-(xv0**2+yv0**2+zv0**2)*t0-(xv1**2+yv1**2+zv1**2)*t1+(xv0+yv0+zv0)*(xv1+yv1+zv1)*(t0+t1)±math.sqrt(((x0-x1)*(xv0-xv1)+(y0-y1)*(yv0-yv1)+(z0-z1)*(zv0-zv1)-(xv0**2+yv0**2+zv0**2)*t0-(xv1**2+yv1**2+zv1**2)*t1+(xv0+yv0+zv0)*(xv1+yv1+zv1)*(t0+t1))**2-(xv0**2+xv1**2+yv0**2+yv1**2+zv0**2+zv1**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1))*(x0**2+x1**2+y0**2+y1**2+z0**2+z1**2-r**2+2*((x0-x1)*(xv1*t1-xv0*t0)-x0*x1+(y0-y1)*(yv1*t1-yv0*t0)-y0*y1+(z0-z1)*(zv1*t1-zv0*t0)-z0*z1)+(xv0**2+yv0**2+zv0**2)*t0**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1)*t0*t1+(xv1**2+yv1**2+zv1**2)*t1**2)))/(xv0**2+xv1**2+yv0**2+yv1**2+zv0**2+zv1**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1)))
+                    #t=-(((x0-x1)*(xv0-xv1)+(y0-y1)*(yv0-yv1)+(z0-z1)*(zv0-zv1)-(xv0**2+yv0**2+zv0**2)*t0-(xv1**2+yv1**2+zv1**2)*t1+(xv0+yv0+zv0)*(xv1+yv1+zv1)*(t0+t1)±math.sqrt(((x0-x1)*(xv0-xv1)+(y0-y1)*(yv0-yv1)+(z0-z1)*(zv0-zv1)-(xv0**2+yv0**2+zv0**2)*t0-(xv1**2+yv1**2+zv1**2)*t1+(xv0+yv0+zv0)*(xv1+yv1+zv1)*(t0+t1))**2-(xv0**2+xv1**2+yv0**2+yv1**2+zv0**2+zv1**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1))*((x0-x1)**2+(y0-y1)**2+(z0-z1)**2-r**2+2*((x0-x1)*(xv1*t1-xv0*t0)+(y0-y1)*(yv1*t1-yv0*t0)+(z0-z1)*(zv1*t1-zv0*t0))+(xv0**2+yv0**2+zv0**2)*t0**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1)*t0*t1+(xv1**2+yv1**2+zv1**2)*t1**2)))/(xv0**2+xv1**2+yv0**2+yv1**2+zv0**2+zv1**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1)))
+                    #better computation
+                    #b=(x0-x1)*(xv0-xv1)+(y0-y1)*(yv0-yv1)+(z0-z1)*(zv0-zv1)-(xv0**2+yv0**2+zv0**2)*t0-(xv1**2+yv1**2+zv1**2)*t1+(xv0+yv0+zv0)*(xv1+yv1+zv1)*(t0+t1)
+                    #a=xv0**2+xv1**2+yv0**2+yv1**2+zv0**2+zv1**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1)
+                    #discriminant=bee**2-a*((x0-x1)**2+(y0-y1)**2+(z0-z1)**2-r**2+2*((x0-x1)*(xv1*t1-xv0*t0)+(y0-y1)*(yv1*t1-yv0*t0)+(z0-z1)*(zv1*t1-zv0*t0))+(xv0**2+yv0**2+zv0**2)*t0**2+(xv1**2+yv1**2+zv1**2)*t1**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1)*t0*t1)
+                    #t=(-b±math.sqrt(discriminant))/a
+                    bee=sum((mi-ni)*(mo-no) for mi,mo,ni,no in zip(k[0][0],k[0][1],l[0][0],l[0][1]))-sum(m**2 for m in k[0][1])*t-sum(n**2 for n in l[0][1])*u+sum(k[0][1])*sum(l[0][1])*(t+u)
+                    #a=xv0**2+xv1**2+yv0**2+yv1**2+zv0**2+zv1**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1) #equals (xv0-xv1)**2+(yv0-yv1)**2+(zv0-zv1)**2 (the magnitude of the difference in velocity) plus something like the cross product but with only positive coefficients and returning the sum of axes like the dot product does (I call it the dross product)
+                    a=sum(m**2 for m in k[0][1])+sum(n**2 for n in l[0][1])-2*sum(k[0][1])*sum(l[0][1])
+                    radius=k[1][0]+l[1][0]
+                    #discriminant=bee**2-a*((x0-x1)**2+(y0-y1)**2+(z0-z1)**2-r**2+2*((x0-x1)*(xv1*t1-xv0*t0)+(y0-y1)*(yv1*t1-yv0*t0)+(z0-z1)*(zv1*t1-zv0*t0))+(xv0**2+yv0**2+zv0**2)*t0**2+(xv1**2+yv1**2+zv1**2)*t1**2-2*(xv0+yv0+zv0)*(xv1+yv1+zv1)*t0*t1)
+                    #discriminant=bee**2-a*(sum((mi-ni)**2+2*(mi-ni)*(mo*t-no*u)+(mo*t)**2+(no*u)**2 for mi,mo,ni,no in zip(k[0][0],k[0][1],l[0][0],l[0][1]))-radius**2-2*sum(k[0][1])*sum(l[0][1])*t*u)
+                    discriminant=bee**2-a*(sum(((mi-ni)+(mo*t-no*u))**2 for mi,mo,ni,no in zip(k[0][0],k[0][1],l[0][0],l[0][1]))-radius**2-2*drossProduct(k[0][1],l[0][1])*t*u) #once again, the dross product (what does it all mean)
                     if discriminant>0:
                         discriminant=math.sqrt(discriminant)
                         #times=[(-bee+p*discriminant)/a for p in range(-1,3,2)] #all coefficients cancel out if you think about it
                         candidate=(-bee-discriminant)/a #times[times[0]<0] #no longer account for exiting spheres
                         if 0<candidate<bestCandidateTime:
                             bestCandidateTime=candidate
+                            bestCandidateTimes=(t,u)
                             bestCandidateRadius=radius
                             bestCandidateNodes=(k,l)
                             bestCandidateIndices=(i,j)
+                    else:
+                        pairsAlreadyCollided.append((i,j))
         if armExtended and nodes[-1][4]==3:
             nodes[-1][0][1]=nodes[nodes[-1][5]][0][1]
             if math.dist(nodes[-1][0][0],nodes[0][0][0])>=nodes[-1][6]:
@@ -212,8 +244,12 @@ def subframes():
                 if dot+contractionRate>0:
                     nodes[0][0]=[[n+nd*nodes[-1][6]-d for n,d,nd in zip(nodes[0][0][0],displacement,normalDisplacement)],[(v-n*dot)/contractionRatio-n*contractionRate for v,n in zip(nodes[0][0][1],normalDisplacement)]]
                 #pairsAlreadyCollided=[(i,j) for i,j in pairsAlreadyCollided if i!=0!=j]
-        for i in nodes:
-            i[0][0]=[s+v*bestCandidateTime for (s,v) in zip(*i[0])] #formerly lap(float.__add__,*i[0]) (back in my day before we had to bother with all of this sub-frame nonsense)
+        '''for i in nodes:
+            i[0][0]=[s+v*bestCandidateTime for (s,v) in zip(*i[0])] #formerly lap(float.__add__,*i[0]) (back in my day before we had to bother with all of this sub-frame nonsense)'''
+        if bestCandidateIndices!=(-1,)*2:
+            for i,j,t in zip(bestCandidateIndices,bestCandidateNodes,bestCandidateTimes):
+                nodes[i][0][0]=[s+v*(bestCandidateTime-t) for s,v in zip(*j[0])]
+                t=bestCandidateTime
         timeElapsed+=bestCandidateTime
         if timeElapsed<1:
             #print(timeElapsed)
@@ -246,7 +282,8 @@ def subframes():
                     for i,v in zip(bestCandidateIndices,tangentCollision(*bestCandidateNodes,bestCandidateRadius)):
                         nodes[i][0][1]=v
             pairsAlreadyCollided=[(i,j) for i,j in pairsAlreadyCollided if i not in bestCandidateIndices and j not in bestCandidateIndices or 2<=nodes[j][4]<4]+[bestCandidateIndices]*(not itsOver) #we're all going to make it
-
+    for i,(j,t) in enumerate(zip(nodes,nodeFramesProceeded)):
+        nodes[i][0][0]=[s+v*(1-t) for s,v in zip(*j[0])]
 def quaternionMultiply(a,b):
     return ( (a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],
               a[0]*b[1]+a[1]*b[0]+a[2]*b[3]-a[3]*b[2],
