@@ -10,7 +10,7 @@ tap=(lambda func,*iterables: tuple(map(func,*iterables)))
 compose=(lambda *f: lambda *a: reduce(lambda a,f: (lambda a,i,f: (f(a) if i else f(*a)))(a,*f),enumerate(f),a))
 transpose=(lambda l: zip(*l))
 from operator import __add__,__neg__,__mul__,__eq__
-from math import gcd,lcm,isqrt,sqrt,cos,sin,acos,e,tau,pi,hypot,dist
+from math import gcd,lcm,isqrt,sqrt,cos,tan,sin,acos,asin,atan2,e,tau,pi,hypot,dist
 moddiv=(lambda a,b: divmod(a,b)[::-1])
 sgn=(lambda n,zerositive=False: 1 if n>0 else -1 if n<0 else zerositive)
 from numbers import Number
@@ -22,24 +22,26 @@ A002260=(lambda n: n-(lambda s: s*(s-1)//2)(A002024(n))) #1-indexed antidiagonal
 
 class matrix3: #flatly-encoded, implementing specific size for versor methods
     def __init__(m,t):
-        m.internal=tuple(t)
+        m.internal=((1-2*(t[2]**2+t[3]**2  ),2*(t[1]*t[2]-t[0]*t[3]),2*(t[0]*t[2]+t[1]*t[3]),
+                     2*(t[1]*t[2]+t[0]*t[3]),1-2*(t[1]**2+t[3]**2  ),2*(t[2]*t[3]-t[0]*t[1]),
+                     2*(t[1]*t[3]-t[0]*t[2]),2*(t[0]*t[1]+t[2]*t[3]),1-2*(t[1]**2+t[2]**2  )) if type(t)==versor else tuple(t))
     __getitem__=(lambda m,i: m.internal[i])
-    versor=(lambda m: (lambda t,q: (lambda t: versor(map(lambda i: t*i,q)))(t**-0.5/2))(*( ( (lambda t: (t,(m[3]-m[1],-m[2]-m[6],-m[5]-m[7], t        )))(1-m[0]-m[4]+m[8]) #my feeling when I cannot fast-inverse-square-root
-                                                                      if m[0]<-m[4] else
-                                                                       (lambda t: (t,(t        , m[7]-m[5], m[2]-m[6], m[3]-m[1])))(1+m[0]+m[4]+m[8]))
-                                                                    if m[8]>0 else
-                                                                     ( (lambda t: (t,(m[7]-m[5], t        ,-m[1]-m[3],-m[2]-m[6])))(1+m[0]-m[4]-m[8])
-                                                                      if m[0]>m[4] else
-                                                                       (lambda t: (t,(m[6]-m[2],-m[1]-m[3], t        ,-m[5]-m[7])))(1-m[0]+m[4]-m[8]))))) #from https://d3cw3dd2w32x2b.cloudfront.net/wp-content/uploads/2015/01/matrix-to-quat.pdf
     unravelling=unraveller(3)
     __matmul__=(lambda a,b: matrix3(matrix3.unravelling(a,b)))
-    __mul__=(lambda a,b: a@b if type(b)==matrix3 else a@matrix3(b) if type(b)==versor else tap(lambda r: dot(a[3*r:3*(r+1)],b),range(3)) if type(b)==vector3 else matrix3(tap(lambda i: b*i,a)) if isinstance(b,Number) else ValueError('wibble'))
+    __mul__=(lambda a,b: a@b if type(b)==matrix3 else a@matrix3(b) if type(b)==versor else vector3(tap(lambda r: dot(a[3*r:3*(r+1)],b),range(3))) if type(b)==vector3 else matrix3(tap(lambda i: b*i,a)) if isinstance(b,Number) else ValueError('wibble'))
     det=(lambda m: m[0]*m[4]*m[8]-m[0]*m[5]*m[7]+m[1]*m[5]*m[6]-m[1]*m[3]*m[8]+m[2]*m[3]*m[7]-m[2]*m[4]*m[6])
     __rmul__=(lambda a,b: a*b)
 
 class versor: #i through x (y to z), j through y (z to x), k through z (x to y) #no normalisation
     def __init__(q,t):
-        q.internal=tuple(t)
+        q.internal=((lambda u,q: (lambda u: tap(lambda i: u*i,q))(u**-0.5/2))(*( ( (lambda u: (u,(t[3]-t[1],-t[2]-t[6],-t[5]-t[7], u        )))(1-t[0]-t[4]+t[8]) #my feeling when I cannot fast-inverse-square-root
+                                                                 if t[0]<-t[4] else
+                                                                  (lambda u: (u,(u        , t[7]-t[5], t[2]-t[6], t[3]-t[1])))(1+t[0]+t[4]+t[8]))
+                                                               if t[8]>0 else
+                                                                ( (lambda u: (u,(t[7]-t[5], u        ,-t[1]-t[3],-t[2]-t[6])))(1+t[0]-t[4]-t[8])
+                                                                 if t[0]>t[4] else
+                                                                  (lambda u: (u,(t[6]-t[2],-t[1]-t[3], u        ,-t[5]-t[7])))(1-t[0]+t[4]-t[8])))) #from https://d3cw3dd2w32x2b.cloudfront.net/wp-content/uploads/2015/01/matrix-to-quat.pdf
+                    if type(t)==matrix3 else tuple(t))
     __getitem__=(lambda m,i: m.internal[i])
     __repr__=(lambda a: 'versor('+','.join(map(str,a.internal))+')')
     __mul__=(lambda a,b: versor((a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],
@@ -52,22 +54,14 @@ class versor: #i through x (y to z), j through y (z to x), k through z (x to y) 
               versor(tap(lambda i: b*i,a))
              if isinstance(b,Number) else
               ValueError('wibble'))
-    #it seems as though   (1-2*(a[2]**2+a[3]**2  ),2*(a[1]*a[2]-a[0]*a[3]),2*(a[0]*a[2]+a[1]*a[3]), (b[0],b[1],b[2]
-                          #2*(a[1]*a[2]+a[0]*a[3]),1-2*(a[1]**2+a[3]**2  ),2*(a[2]*a[3]-a[0]*a[1]),  b[3],b[4],b[5]
-                          #2*(a[1]*a[3]-a[0]*a[2]),2*(a[0]*a[1]+a[2]*a[3]),1-2*(a[1]**2+a[2]**2  ))* b[6],b[7],b[8]) is the minimal form already for versor-matrix multiplication
     __eq__=(lambda a,b: a.internal==b.internal)#(lambda a,b: all(map(__eq__,a,b)))
-    matrix3=(lambda q: matrix3((1-2*(q[2]**2+q[3]**2  ),2*(q[1]*q[2]-q[0]*q[3]),2*(q[0]*q[2]+q[1]*q[3]),
-                           2*(q[1]*q[2]+q[0]*q[3]),1-2*(q[1]**2+q[3]**2  ),2*(q[2]*q[3]-q[0]*q[1]),
-                           2*(q[1]*q[3]-q[0]*q[2]),2*(q[0]*q[1]+q[2]*q[3]),1-2*(q[1]**2+q[2]**2  ))))
-    def ln(q):
+    def log(q):
         immag=sqrt(1-q[0]**2) #=q[1]**2+q[2]**2+q[3]**2
-        coeff=acos(q[0])/immag #the q[0] in the acos would be divided by magnitude if it weren't 1 (due to being a unit vector)
-        return(versor((0,coeff*q[1],coeff*q[2],coeff*q[3]))) #0 would be log(magnitude)
-    def exp(q): #meant to be specifically outer inverse of ln
-        expreal=e**q[0]
-        immag=sqrt(q[1]**2+q[2]**2+q[3]**2) #cannot be sqrt(1-q[0]**2) due to logarithms not being unit vectors
-        coeff=expreal*(1 if immag==0 else sin(immag)/immag)
-        return(versor((expreal*cos(immag),coeff*q[1],coeff*q[2],coeff*q[3])))
+        try:
+            coeff=acos(q[0])/immag #the q[0] in the acos would be divided by magnitude if it weren't a unit vector
+        except:
+            coeff=1 #I don't like it but it wouldn't detect float equality correctly
+        return(vector3((coeff*q[1],coeff*q[2],coeff*q[3]))) #0 would be log(magnitude)
     def slerp(a,b,t):
         dot=a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]
         ang=t*acos(abs(dot))
@@ -82,19 +76,20 @@ class versor: #i through x (y to z), j through y (z to x), k through z (x to y) 
 class vector3:
     def __init__(v,t):
         v.internal=tuple(t)
+    __getitem__=(lambda m,i: m.internal[i])
     __iter__=(lambda v: iter(v.internal))
-    __mul__=(lambda a,b: vector3(dot(a,b)))
+    __repr__=(lambda a: 'vector3('+','.join(map(str,a.internal))+')')
+    __mul__=(lambda a,b: vector3(dot(a,b)) if type(b)==vector3 else vector3(tap(lambda a: a*b,a)))
     __matmul__=(lambda a,b: vector3((a[1]*b[2]-a[2]*b[1],
                        a[2]*b[0]-a[0]*b[2],
                        a[0]*b[1]-a[1]*b[0]))) #cross
-    dross=(lambda a,b: vector3(sum(a)*sum(b)-dot(a,b))) #useful in the perspective 3D engine's time mode
+    dross=(lambda a,b: sum(a)*sum(b)-dot(a,b)) #useful in the perspective 3D engine's time mode
     normalise=(lambda v: (lambda m: vector(tap(lambda v: v/m,v)) if 0!=m!=1 else v)(hypot(*v)))
-
-print(tuple(matrix3(range(9))*3))
-print(tuple(3*matrix3(range(9))))
-print(tuple(matrix3(range(9))@matrix3(range(9))))
-print(tuple(versor.matrix3(matrix3.versor(matrix3((1,0,0,0,1,0,0,0,1))))))
-print(tuple(versor.matrix3(versor((1,0,0,0)))))
+    def exp(v): #meant to be specifically inverse of versor.log
+        expreal=1#e**q[0]
+        immag=hypot(*v) #cannot be sqrt(1-q[0]**2) due to logarithms not being unit vectors
+        coeff=expreal*(sin(immag)/immag if immag else 1)
+        return(versor((expreal*cos(immag),coeff*v[0],coeff*v[1],coeff*v[2])))
 
 def inthroot(b,n): #I hesitate to call it 'fast' integer nth root #sign-preserving (very suspicious)
     if b<0:
@@ -392,30 +387,75 @@ def doEvents():
     clock.tick(FPS)
     screen.fill(0x000000)
     size=screen.get_size()
-FPS=60
+FPS=24
 axialCollision=(lambda m0,v0,m1,v1: (((m0-m1)*v0+2*m1*v1)/(m0+m1),
                                 ((m1-m0)*v1+2*m0*v0)/(m1+m0)))
 
 pixelAngle=tau/max(size)
 gain=1/600
+rad=10
 drag=1/2**4
 angularGain=gain*tau/FPS
 camera=[[versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))],[versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))]] #velocity is versor by which it's multiplied each frame
-run=True
 
-testder=(lambda n: lap(__add__,(n/camera[0][0]*minSize*(1/2))[:2],halfSize))
+def projectRelativeToScreen(position,radius=rad):
+    (x,y,z)=position
+    if projectionMode==0:
+        r=tap(__add__,(position*minSize*(1/2))[:2],halfSize)+(0,)
+    if projectionMode==1: #weird
+        r=tap(lambda i: minSize*atan2(i,z),(x,y))+(0,)
+    elif projectionMode==2: #azimuthal equidistant
+        h=((x or y) and atan2((x**2+y**2),z**2)/hypot(x,y))
+        r=(x*h/pixelAngle,y*h/pixelAngle,hypot(*position))
+    else:
+        magnitude=atan2(hypot(x,y),z) #other azimuthals
+        if projectionMode==3: #Lambert equi-area (not to be taken to before 1772)
+            magnitude=2*abs(sin(magnitude/2)) #formerly sqrt(sin(magnitude)**2+(cos(magnitude)-1)**2)
+        elif projectionMode==4: #stereographic (trippy)
+            if radius==0:
+                magnitude=1/tan(magnitude/2) #equivalent to sin(magnitude)/(1-cos(magnitude))
+            else:
+                h=hypot(x,y)
+                hh=hypot(*position)
+                offset=asin(radius/hh)
+                s0=1/tan((magnitude-offset)/2)
+                s1=1/tan((magnitude+offset)/2)
+                radius=s1-s0
+                magnitude=(s0+s1)/2
+        direction=atan2(x,y)
+        r=(sin(direction)*magnitude/pixelAngle,cos(direction)*magnitude/pixelAngle,(hypot(*position)))
+    return((r[0]+halfSize[0],r[1]+halfSize[1],r[2]))
+
+projectionMode=3
+perspectiveMode=True
+omnidirectionalMode=False
+colourMode=not(perspectiveMode)
+triangleWave=(lambda o: tap(lambda c: int(255*(1-(lambda o: 3*o if o<1/3 else 2-3*o if o<2/3 else 0)((o+c/3)%1))),range(3)))
+testder=(lambda n: projectRelativeToScreen(n))
+run=True
 while run:
     keys=pygame.key.get_pressed()
     doEvents()
-    #print(camera)
-    camera=larmap(lambda s,v: lap(versor.__mul__,s,v),(camera,(camera[1],map(lambda i,v,m: versor.exp((0,)+((lambda m: tuple(camera[0][1]*vector3(m))) if i else tuple)(map(lambda v: m*v,v))),range(2),(((keys[pygame.K_d]-keys[pygame.K_a],keys[pygame.K_f]-keys[pygame.K_r],keys[pygame.K_w]-keys[pygame.K_s])),((keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]))),(gain,angularGain)))))
+    camera=larmap(lambda s,v: lap(versor.__mul__,s,v),(camera,(camera[1],map(lambda i,v,m: vector3.exp(((lambda m: tuple(camera[0][1].conjugate()*vector3(m))) if i else tuple)(map(lambda v: m*v,v))),range(2),(((keys[pygame.K_d]-keys[pygame.K_a],keys[pygame.K_f]-keys[pygame.K_r],keys[pygame.K_w]-keys[pygame.K_s])),((keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]))),(gain,angularGain)))))
+    print(camera[0])
     if keys[pygame.K_LSHIFT]:
         camera[1]=[versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))]
     for t,n in zip(transitions,nodes):
-        o=testder(n)
-        drawShape(10,o,0xffffff,0)
-        for e in lineDrawers:
-            d=testder(nodes[t[e]])
-            if dist(o,d)>20:
-                drawLine(o,d,0xffffff)
+        if perspectiveMode:
+            f=camera[0][1]*versor.log(n/camera[0][0])
+        else:
+            f=n/camera[0][0]
+            if colourMode:
+                a=atan2(f[2],f[3])/tau
+        o=testder(f)
+        if omnidirectionalMode or f[2]>0:
+            drawShape(rad/o[2],o[:2],(triangleWave(a) if colourMode else 0xffffff),0)
+        if True or not perspectiveMode:
+            for e in lineDrawers:
+                g=camera[0][1]*versor.log(nodes[t[e]]/camera[0][0])
+                if colourMode:
+                    b=atan2(g[2],g[3])/tau
+                d=testder(g)
+                if dist(o[:2],d[:2])>20 and omnidirectionalMode or f[2]>0 and g[2]>0:
+                    drawLine(o[:2],d[:2],(tap(lambda a,b: sqrt((a**2+b**2)/2),triangleWave(a),triangleWave(b)) if colourMode else 0xffffff))
 else: exit()
