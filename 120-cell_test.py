@@ -56,23 +56,60 @@ class versor: #i through x (y to z), j through y (z to x), k through z (x to y) 
               ValueError('wibble'))
     __eq__=(lambda a,b: a.internal==b.internal)#(lambda a,b: all(map(__eq__,a,b)))
     def log(q):
-        immag=sqrt(1-q[0]**2) #=q[1]**2+q[2]**2+q[3]**2
         try:
+            immag=sqrt(1-q[0]**2) #=q[1]**2+q[2]**2+q[3]**2
             coeff=acos(q[0])/immag #the q[0] in the acos would be divided by magnitude if it weren't a unit vector
         except:
+            immag=0
             coeff=1 #I don't like it but it wouldn't detect float equality correctly
         return(vector3((coeff*q[1],coeff*q[2],coeff*q[3]))) #0 would be log(magnitude)
-    def slerp(a,b,t):
-        dot=a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]
-        ang=t*acos(abs(dot))
-        bc=sin(ang)*sgn(dot,True)/sqrt(1-dot**2)
-        ac=cos(ang)-bc*dot
-        return((ac*a[0]+bc*b[0],
-                ac*a[1]+bc*b[1],
-                ac*a[2]+bc*b[2],
-                ac*a[3]+bc*b[3]))
     conjugate=(lambda q: versor((q[0],-q[1],-q[2],-q[3])))
-    __truediv__=(lambda a,b: a*b.conjugate())
+    __pow__=(lambda a,b: a.conjugate() if b==-1 else exp(log(a)*b)) #special case can be removed if you would like more stability (living life on the edge)
+    __truediv__=(lambda a,b: a*b**-1)
+
+def slerp(a,b,t,x=None): #a*(b/a)**t=a*exp(log(b/a)*t), derived in https://github.com/DroneBetter/Perspective3Dengine/blob/main/perspective%203D%20engine.py
+    dot=a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]
+    ang=t*acos(abs(dot))
+    bc=sin(ang)*sgn(dot,True)/sqrt(1-dot**2)
+    ac=cos(ang)-bc*dot
+    return((ac*a[0]+bc*b[0],
+            ac*a[1]+bc*b[1],
+            ac*a[2]+bc*b[2],
+            ac*a[3]+bc*b[3]))
+def rotationParameters(a,v,w,x=None): #'in general, to rotate by amount a from some versor v to a perpendicular versor w (while conserving the perpendicular components), you need the map (lambda x: (cos(a/2)+sin(a/2)*w*v**-1)*x*(cos(a/2)+sin(a/2)*v**-1*w))'
+    c=cos(a/2);s=sin(a/2)
+    if x==None:
+        #w*v**-1
+        left =versor((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]),
+                        s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2]),
+                        s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1]),
+                        s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])))
+        #v**-1*w
+        right=versor((c+s*( v[0]*w[0]+v[1]*w[1]+v[2]*w[2]+v[3]*w[3]),
+                        s*( v[0]*w[1]-v[1]*w[0]-v[2]*w[3]+v[3]*w[2]),
+                        s*( v[0]*w[2]+v[1]*w[3]-v[2]*w[0]-v[3]*w[1]),
+                        s*( v[0]*w[3]-v[1]*w[2]+v[2]*w[1]-v[3]*w[0])))
+        return(left,right)
+        #left*x*right (w*v**-1*x*v**-1*w)
+        '''comp =versor((((c+s*(w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[0]-s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[1]-s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[2]-s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[3])*(c+s*( v[0]*w[0]+v[1]*w[1]+v[2]*w[2]+v[3]*w[3]))-((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[1]+s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[0]+s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[3]-s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[2])*(  s*( v[0]*w[1]-v[1]*w[0]-v[2]*w[3]+v[3]*w[2]))-((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[2]-s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[3]+s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[0]+s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[1])*(  s*( v[0]*w[2]+v[1]*w[3]-v[2]*w[0]-v[3]*w[1]))-((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[3]+s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[2]-s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[1]+s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[0])*(  s*( v[0]*w[3]-v[1]*w[2]+v[2]*w[1]-v[3]*w[0])),
+                         ((c+s*(w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[0]-s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[1]-s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[2]-s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[3])*(  s*( v[0]*w[1]-v[1]*w[0]-v[2]*w[3]+v[3]*w[2]))+((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[1]+s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[0]+s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[3]-s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[2])*(c+s*( v[0]*w[0]+v[1]*w[1]+v[2]*w[2]+v[3]*w[3]))+((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[2]-s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[3]+s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[0]+s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[1])*(  s*( v[0]*w[3]-v[1]*w[2]+v[2]*w[1]-v[3]*w[0]))-((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[3]+s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[2]-s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[1]+s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[0])*(  s*( v[0]*w[2]+v[1]*w[3]-v[2]*w[0]-v[3]*w[1])),
+                         ((c+s*(w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[0]-s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[1]-s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[2]-s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[3])*(  s*( v[0]*w[2]+v[1]*w[3]-v[2]*w[0]-v[3]*w[1]))-((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[1]+s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[0]+s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[3]-s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[2])*(  s*( v[0]*w[3]-v[1]*w[2]+v[2]*w[1]-v[3]*w[0]))+((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[2]-s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[3]+s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[0]+s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[1])*(c+s*( v[0]*w[0]+v[1]*w[1]+v[2]*w[2]+v[3]*w[3]))+((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[3]+s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[2]-s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[1]+s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[0])*(  s*( v[0]*w[1]-v[1]*w[0]-v[2]*w[3]+v[3]*w[2])),
+                         ((c+s*(w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[0]-s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[1]-s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[2]-s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[3])*(  s*( v[0]*w[3]-v[1]*w[2]+v[2]*w[1]-v[3]*w[0]))+((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[1]+s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[0]+s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[3]-s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[2])*(  s*( v[0]*w[2]+v[1]*w[3]-v[2]*w[0]-v[3]*w[1]))-((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[2]-s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[3]+s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[0]+s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[1])*(  s*( v[0]*w[1]-v[1]*w[0]-v[2]*w[3]+v[3]*w[2]))+((c+s*( w[0]*v[0]+w[1]*v[1]+w[2]*v[2]+w[3]*v[3]))*x[3]+s*(-w[0]*v[1]+w[1]*v[0]-w[2]*v[3]+w[3]*v[2])*x[2]-s*(-w[0]*v[2]+w[1]*v[3]+w[2]*v[0]-w[3]*v[1])*x[1]+s*(-w[0]*v[3]-w[1]*v[2]+w[2]*v[1]+w[3]*v[0])*x[0])*(c+s*( v[0]*w[0]+v[1]*w[1]+v[2]*w[2]+v[3]*w[3]))))'''
+    else:
+        d=(v[0]*w[1]-v[1]*w[0]-v[2]*w[3]+v[3]*w[2],
+           v[0]*w[2]+v[1]*w[3]-v[2]*w[0]-v[3]*w[1],
+           v[0]*w[3]-v[1]*w[2]+v[2]*w[1]-v[3]*w[0])
+        b=(v[0]*w[1]-v[1]*w[0]+v[2]*w[3]-v[3]*w[2],
+           v[0]*w[2]-v[1]*w[3]-v[2]*w[0]+v[3]*w[1],
+           v[0]*w[3]+v[1]*w[2]-v[2]*w[1]-v[3]*w[0])
+        e=(c*x[0]+s*(-b[0]*x[1]-b[1]*x[2]-b[2]*x[3]),
+           c*x[1]+s*( b[0]*x[0]+b[1]*x[3]-b[2]*x[2]),
+           c*x[2]+s*(-b[0]*x[3]+b[1]*x[0]+b[2]*x[1]),
+           c*x[3]+s*( b[0]*x[2]-b[1]*x[1]+b[2]*x[0]))
+        return(versor((c*e[0]+s*(-d[0]*e[1]-d[1]*e[2]-d[2]*e[3]),
+                       c*e[1]+s*( d[0]*e[0]-d[1]*e[3]+d[2]*e[2]),
+                       c*e[2]+s*( d[0]*e[3]+d[1]*e[0]-d[2]*e[1]),
+                       c*e[3]+s*(-d[0]*e[2]+d[1]*e[1]+d[2]*e[0])))) #fastest way I have found (for non-composable method)
 class vector3:
     def __init__(v,t):
         v.internal=tuple(t)
@@ -80,15 +117,19 @@ class vector3:
     __iter__=(lambda v: iter(v.internal))
     __repr__=(lambda a: 'vector3('+','.join(map(str,a.internal))+')')
     __mul__=(lambda a,b: vector3(dot(a,b)) if type(b)==vector3 else vector3(tap(lambda a: a*b,a)))
+    __rmul__=(lambda a,b: a*b)
     __matmul__=(lambda a,b: vector3((a[1]*b[2]-a[2]*b[1],
                        a[2]*b[0]-a[0]*b[2],
                        a[0]*b[1]-a[1]*b[0]))) #cross
+    __add__=(lambda a,b: vector3(map(__add__,a,b)))
+    __neg__=(lambda v: vector3(map(__neg__,v)))
+    __sub__=(lambda a,b: a+-b)
     dross=(lambda a,b: sum(a)*sum(b)-dot(a,b)) #useful in the perspective 3D engine's time mode
-    normalise=(lambda v: (lambda m: vector(tap(lambda v: v/m,v)) if 0!=m!=1 else v)(hypot(*v)))
+    normalise=(lambda v: (lambda m: vector3(tap(lambda v: v/m,v)) if 0!=m!=1 else v)(hypot(*v)))
     def exp(v): #meant to be specifically inverse of versor.log
         expreal=1#e**q[0]
         immag=hypot(*v) #cannot be sqrt(1-q[0]**2) due to logarithms not being unit vectors
-        coeff=expreal*(sin(immag)/immag if immag else 1)
+        coeff=expreal*(immag and sin(immag)/immag)
         return(versor((expreal*cos(immag),coeff*v[0],coeff*v[1],coeff*v[2])))
 
 def inthroot(b,n): #I hesitate to call it 'fast' integer nth root #sign-preserving (very suspicious)
@@ -349,6 +390,7 @@ size=(2560,1050)
 screen=pygame.display.set_mode(size[:2],pygame.RESIZABLE)
 mouse=pygame.mouse
 def drawShape(size,pos,colour,shape=0):
+    size=min(size,minSize)
     '''if shape==0:
         pygame.draw.rect(screen,colour,pos+size)
     elif shape<5:
@@ -396,8 +438,9 @@ gain=1/600
 rad=10
 drag=1/2**4
 angularGain=gain*tau/FPS
-camera=[[versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))],[versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))]] #velocity is versor by which it's multiplied each frame
+camera=[(versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))),[versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))]]#((versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))),(versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0)))) #velocity is versor by which it's multiplied each frame
 
+project=(lambda n: (camera[0][1]*versor.log(n/camera[0][0]) if twistyMode else versor.log(camera[0][0]*n*camera[0][1])))
 def projectRelativeToScreen(position,radius=rad):
     (x,y,z)=position
     if projectionMode==0:
@@ -428,34 +471,52 @@ def projectRelativeToScreen(position,radius=rad):
 
 projectionMode=3
 perspectiveMode=True
+twistyMode=False #elegant implementation of unfortunately misunderstood maths
 omnidirectionalMode=False
 colourMode=not(perspectiveMode)
 triangleWave=(lambda o: tap(lambda c: int(255*(1-(lambda o: 3*o if o<1/3 else 2-3*o if o<2/3 else 0)((o+c/3)%1))),range(3)))
-testder=(lambda n: projectRelativeToScreen(n))
+toggleKeys=(pygame.K_SPACE,)
+oldToggles=(False,)*len(toggleKeys)
 run=True
 while run:
     keys=pygame.key.get_pressed()
     doEvents()
-    camera=larmap(lambda s,v: lap(versor.__mul__,s,v),(camera,(camera[1],map(lambda i,v,m: vector3.exp(((lambda m: tuple(camera[0][1].conjugate()*vector3(m))) if i else tuple)(map(lambda v: m*v,v))),range(2),(((keys[pygame.K_d]-keys[pygame.K_a],keys[pygame.K_f]-keys[pygame.K_r],keys[pygame.K_w]-keys[pygame.K_s])),((keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]))),(gain,angularGain)))))
-    print(camera[0])
+    if twistyMode: #camera=((position,orientation),(spatial,angular))
+        camera=tarmap(lambda s,v: tap(versor.__mul__,s,v),(camera,(camera[1],map(lambda i,v,m: vector3.exp((lambda m: tuple(camera[0][1].conjugate()*m) if i else m)(m*v)),range(2),(vector3((keys[pygame.K_d]-keys[pygame.K_a],keys[pygame.K_f]-keys[pygame.K_r],keys[pygame.K_w]-keys[pygame.K_s])),vector3((keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]))),(gain,angularGain)))))
+    else: #camera=((weird intertwined representation of both),(spatial,angular))
+        camera[1][0]*=vector3.exp(gain*vector3((keys[pygame.K_a]-keys[pygame.K_d],keys[pygame.K_r]-keys[pygame.K_f],keys[pygame.K_s]-keys[pygame.K_w]))*(-1)**twistyMode) #(I change the conventions instead of fixing the program :-)
+        camera[1][1]*=vector3.exp(angularGain*vector3((keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e])))
+        motion=versor.log(camera[1][0])
+        a=hypot(*motion)
+        (left,right)=rotationParameters(a,(1.0,0.0,0.0,0.0),vector3.exp(pi/2*vector3.normalise(motion)))
+        camera[0]=(camera[1][1]*left*camera[0][0],camera[0][1]*right*camera[1][1]**-1) #very important order
+
     if keys[pygame.K_LSHIFT]:
-        camera[1]=[versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))]
+        camera=[camera[0],[versor((1.0,0.0,0.0,0.0)),versor((1.0,0.0,0.0,0.0))]]
     for t,n in zip(transitions,nodes):
         if perspectiveMode:
-            f=camera[0][1]*versor.log(n/camera[0][0])
+            f=project(n)
         else:
             f=n/camera[0][0]
             if colourMode:
                 a=atan2(f[2],f[3])/tau
-        o=testder(f)
+        o=projectRelativeToScreen(f)
         if omnidirectionalMode or f[2]>0:
             drawShape(rad/o[2],o[:2],(triangleWave(a) if colourMode else 0xffffff),0)
-        if True or not perspectiveMode:
-            for e in lineDrawers:
-                g=camera[0][1]*versor.log(nodes[t[e]]/camera[0][0])
-                if colourMode:
-                    b=atan2(g[2],g[3])/tau
-                d=testder(g)
-                if dist(o[:2],d[:2])>20 and omnidirectionalMode or f[2]>0 and g[2]>0:
-                    drawLine(o[:2],d[:2],(tap(lambda a,b: sqrt((a**2+b**2)/2),triangleWave(a),triangleWave(b)) if colourMode else 0xffffff))
+        for e in lineDrawers:
+            g=project(nodes[t[e]])
+            if colourMode:
+                b=atan2(g[2],g[3])/tau
+            d=projectRelativeToScreen(g)
+            if dist(o[:2],d[:2])>20 and omnidirectionalMode or f[2]>0 and g[2]>0:
+                drawLine(o[:2],d[:2],(tap(lambda a,b: sqrt((a**2+b**2)/2),triangleWave(a),triangleWave(b)) if colourMode else 0xffffff))
+    '''for n in map(lambda n: camera[0][0]*n,versor((cos(pi/8),sin(pi/8),0.0,0.0))):
+        f=camera[0][1]*versor.log(n/camera[0][0])
+        drawShape(rad/o[2],o[:2],(triangleWave(a) if colourMode else 0xffffff),0)'''
+    toggles=tap(keys.__getitem__,toggleKeys)
+    for i,(k,o) in enumerate(zip(toggles,oldToggles)):
+        if not k and o:
+            if i==0: #space
+                print(orientation)
+    oldToggles=toggles
 else: exit()
